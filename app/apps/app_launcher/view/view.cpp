@@ -38,12 +38,14 @@ void LauncherView::init()
     renderCategories();
     renderTiles();
     buildSummary();
+    requestHardwareStatus(GetHAL()->millis());
     renderSummary();
 }
 
 void LauncherView::update()
 {
     const uint32_t now = GetHAL()->millis();
+    requestHardwareStatus(now);
     if (now - _lastSummaryRefreshMs < 250) {
         return;
     }
@@ -51,6 +53,20 @@ void LauncherView::update()
     LvglLockGuard lock;
     renderSummary();
     _lastSummaryRefreshMs = now;
+}
+
+void LauncherView::requestHardwareStatus(uint32_t nowMs)
+{
+    if (_hardwarePolled && nowMs - _lastHardwarePollMs < 500) return;
+    auto* hardware = GetHAL();
+    if (_statusSampler.start("Home status", [hardware] {
+        hardware->updatePowerMonitorData();
+        hardware->updateRtcData();
+        hardware->updateInterfaceData();
+    })) {
+        _hardwarePolled = true;
+        _lastHardwarePollMs = nowMs;
+    }
 }
 
 void LauncherView::createLayout()
@@ -233,6 +249,7 @@ void LauncherView::renderTiles()
         lv_obj_set_pos(statusLabel, layout.tileStatus.x, layout.tileStatus.y);
         lv_obj_set_width(statusLabel, layout.tileStatus.w);
         lv_label_set_long_mode(statusLabel, LV_LABEL_LONG_DOT);
+        action->status = statusLabel;
 
         _tileActions.push_back(std::move(action));
         ++index;
@@ -289,13 +306,24 @@ void LauncherView::renderSummary()
         buildSummary();
     }
 
-    tm now = {};
-    GetHAL()->getRtcTime(&now);
-    char timeText[16];
-    std::snprintf(timeText, sizeof(timeText), "%02d:%02d", now.tm_hour, now.tm_min);
+    const auto clockStatus = registry().status(AppKey::Rtc);
+    const auto& timeText = clockStatus.text;
     if (_lastTimeText != timeText) {
-        lv_label_set_text(_timeLabel, timeText);
+        lv_label_set_text(_timeLabel, timeText.c_str());
         _lastTimeText = timeText;
+    }
+
+    for (auto& tile : _tileActions) {
+        if (!tile->status) continue;
+        const auto status = registry().status(tile->key);
+        if (tile->lastStatus != status.text) {
+            lv_label_set_text(tile->status, status.text.c_str());
+            tile->lastStatus = status.text;
+        }
+        const auto color = status.level == StatusLevel::Error ? app_ui::theme::red :
+            status.level == StatusLevel::Warning ? app_ui::theme::amber :
+            status.level == StatusLevel::Ok ? app_ui::theme::green : app_ui::theme::muted;
+        lv_obj_set_style_text_color(tile->status, app_ui::theme::color(color), 0);
     }
 
     for (auto& row : _summaryRows) {

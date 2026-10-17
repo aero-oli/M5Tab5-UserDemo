@@ -14,6 +14,10 @@ struct PowerSettingsState {
     uint16_t rtcMinutes = 5;
     PowerSettingsSample sample;
     bool hasSample = false;
+    bool sampleValid = false;
+    bool sampleSimulated = false;
+    uint32_t sampledAtMs = 0;
+    std::string sampleError;
     bool simulated = false;
     bool displayAsleep = false;
     std::string message = "Ready";

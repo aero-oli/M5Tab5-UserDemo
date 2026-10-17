@@ -27,6 +27,7 @@ struct FakePower {
         changed.wait(lock, [&] { return !holdSample; });
         ++samples;
         hal::HalBase::PMData_t data;
+        data.valid = data.hasSample = finite;
         data.busVoltage = finite ? 8.12f : std::numeric_limits<float>::quiet_NaN();
         data.busPower = 2.5f;
         return data;
@@ -138,7 +139,8 @@ static void testSamplingAndDisplayWake()
     }
     c->update(500);
     wait([&] { return c->state().state == PowerState::Ready; });
-    assert(!c->state().hasSample);
+    assert(c->state().hasSample && !c->state().sampleValid);
+    assert(c->state().sample.busVoltage == 8.12f);
     assert(PowerSettingsController::formatBatteryInput({7.987f, 1.234f}) == "7.99 V / 1.23 W");
 }
 

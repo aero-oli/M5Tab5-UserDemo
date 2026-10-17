@@ -13,7 +13,6 @@
 namespace app_hardware_imu {
 
 struct ImuSample : hal::HalBase::IMUData_t {
-    bool hasSample = false;
     bool pending = false;
 };
 
@@ -27,6 +26,7 @@ public:
     ImuSample sample() const;
     ImuSample cached() const;
 
+    static std::string statusText(const ImuSample& sample, uint32_t nowMs);
     static std::string formatAccel(float value);
     static std::string formatGyro(float value);
 

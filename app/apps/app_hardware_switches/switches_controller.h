@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <string>
+#include <hal/hal.h>
 
 namespace app_hardware_switches {
 
@@ -26,11 +27,7 @@ struct SwitchSnapshot {
     bool extAntenna = false;
 };
 
-struct InterfaceSnapshot {
-    bool usbC = false;
-    bool usbA = false;
-    bool headphone = false;
-};
+using InterfaceSnapshot = hal::HalBase::InterfaceData;
 
 class SwitchesController {
 public:

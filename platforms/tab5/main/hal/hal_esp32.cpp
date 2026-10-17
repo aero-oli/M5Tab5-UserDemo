@@ -8,9 +8,8 @@
 #include <hal/profiles/tab5_gpio.h>
 #include <array>
 #include <mutex>
-extern "C" {
-#include "utils/rx8130/rx8130.h"
-}
+#include <cmath>
+#include <modules/rtc/rx8130_calendar.h>
 #include <mooncake_log.h>
 #include <cstring>
 #include <functional>
@@ -112,16 +111,18 @@ void HalEsp32::init()
     imu_init();
 
     mclog::tagInfo(_tag, "ina226 init");
-    ina226.begin(i2c_bus_handle, 0x41);
-    ina226.configure(INA226_AVERAGES_16, INA226_BUS_CONV_TIME_1100US, INA226_SHUNT_CONV_TIME_1100US,
-                     INA226_MODE_SHUNT_BUS_CONT);
-    ina226.calibrate(0.005, 8.192);
-    mclog::tagInfo(_tag, "bus voltage: {}", ina226.readBusVoltage());
+    if (!ina226.begin(i2c_bus_handle, 0x41) ||
+        !ina226.configure(INA226_AVERAGES_16, INA226_BUS_CONV_TIME_1100US, INA226_SHUNT_CONV_TIME_1100US,
+                          INA226_MODE_SHUNT_BUS_CONT) || !ina226.calibrate(0.005, 8.192)) {
+        publishPowerMonitorError("Power monitor initialization failed");
+        mclog::tagError(_tag, "Power monitor initialization failed");
+    } else {
+        updatePowerMonitorData();
+    }
 
     mclog::tagInfo(_tag, "rx8130 init");
-    rx8130.begin(i2c_bus_handle, 0x32);
-    rx8130.initBat();
-    clearRtcIrq();
+    clearRtcIrq(); // Preserves VLF; initialization is only an explicitly confirmed operation.
+    updateRtcData();
     update_system_time();
 
     mclog::tagInfo(_tag, "display init");
@@ -229,19 +230,32 @@ uint32_t HalEsp32::millis()
 
 int HalEsp32::getCpuTemp()
 {
+    int value = 0;
+    readCpuTemp(value);
+    return value;
+}
+
+bool HalEsp32::readCpuTemp(int& value)
+{
+    // Reopened PM controllers can overlap while an older sample is finishing.
+    static std::mutex mutex;
+    static bool enabled = false;
+    std::lock_guard<std::mutex> lock(mutex);
     if (_temp_sensor == nullptr) {
-        temperature_sensor_config_t temp_sensor_config = {
-            .range_min = 20,
-            .range_max = 100,
-        };
-        temperature_sensor_install(&temp_sensor_config, &_temp_sensor);
-        temperature_sensor_enable(_temp_sensor);
+        temperature_sensor_config_t config = {.range_min = 20, .range_max = 100};
+        if (temperature_sensor_install(&config, &_temp_sensor) != ESP_OK) return false;
     }
-
-    float temp = 0;
-    temperature_sensor_get_celsius(_temp_sensor, &temp);
-
-    return temp;
+    if (!enabled) {
+        if (temperature_sensor_enable(_temp_sensor) != ESP_OK) {
+            if (temperature_sensor_uninstall(_temp_sensor) == ESP_OK) _temp_sensor = nullptr;
+            return false;
+        }
+        enabled = true;
+    }
+    float temperature = 0;
+    if (temperature_sensor_get_celsius(_temp_sensor, &temperature) != ESP_OK || !std::isfinite(temperature)) return false;
+    value = static_cast<int>(temperature);
+    return true;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -287,95 +301,140 @@ void HalEsp32::lvglUnlock()
 /* -------------------------------------------------------------------------- */
 void HalEsp32::clearRtcIrq()
 {
-    mclog::tagInfo(_tag, "clear rtc irq");
-    rx8130.clearIrqFlags();
-    rx8130.disableIrq();
+    std::lock_guard<std::mutex> lock(_rtcIoMutex);
+    modules::HalI2cDevice device(hal::ModuleBus::MBus, 0x32);
+    rtc::Rx8130Calendar calendar(device);
+    if (!calendar.clearWakeIrq()) mclog::tagError(_tag, "RTC IRQ clear failed: {}", calendar.error());
 }
 
-void HalEsp32::setRtcTime(tm time)
+void HalEsp32::updateRtcData()
 {
-    mclog::tagInfo(_tag, "set rtc time to {}/{}/{} {:02d}:{:02d}:{:02d}", time.tm_year + 1900, time.tm_mon + 1,
-                   time.tm_mday, time.tm_hour, time.tm_min, time.tm_sec);
-    rx8130.setTime(&time);
-    delay(50);
+    std::lock_guard<std::mutex> lock(_rtcIoMutex);
+    auto data = getRtcData();
+    modules::HalI2cDevice device(hal::ModuleBus::MBus, 0x32);
+    rtc::Rx8130Calendar calendar(device);
+    tm actual{};
+    data.valid = calendar.read(actual, data.needsInitialization);
+    data.error = calendar.error();
+    if (data.valid) { data.time = actual; data.hasSample = true; data.sampledAtMs = millis(); }
+    publishRtcData(data);
+}
 
-    update_system_time();
+bool HalEsp32::setRtcTimeChecked(const tm& time, bool initialize)
+{
+    std::lock_guard<std::mutex> lock(_rtcIoMutex);
+    auto data = getRtcData();
+    modules::HalI2cDevice device(hal::ModuleBus::MBus, 0x32);
+    rtc::Rx8130Calendar calendar(device);
+    tm actual{};
+    data.valid = calendar.set(time, initialize, actual);
+    data.error = calendar.error();
+    if (data.valid) {
+        data.time = actual; data.hasSample = true; data.needsInitialization = false; data.sampledAtMs = millis();
+    }
+    publishRtcData(data);
+    if (data.valid) update_system_time();
+    return data.valid;
 }
 
 void HalEsp32::update_system_time()
 {
-    mclog::tagInfo(_tag, "update system time");
-    struct tm time;
-    rx8130.getTime(&time);
-    mclog::tagInfo(_tag, "sync to rtc time: {}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}", time.tm_year + 1900,
-                   time.tm_mon + 1, time.tm_mday, time.tm_hour, time.tm_min, time.tm_sec);
-    struct timeval now;
-    now.tv_sec  = mktime(&time);
-    now.tv_usec = 0;
-    settimeofday(&now, NULL);
+    const auto data = getRtcData();
+    if (!data.valid) return;
+    tm time = data.time;
+    struct timeval now{};
+    now.tv_sec = mktime(&time);
+    if (now.tv_sec < 0) return;
+    settimeofday(&now, nullptr);
 }
 
 /* -------------------------------------------------------------------------- */
 /*                                   SD Card                                  */
 /* -------------------------------------------------------------------------- */
 #include <dirent.h>
+#include <cerrno>
+#include <hal/sd_scan.h>
 #include <sys/types.h>
 
 bool HalEsp32::isSdCardMounted()
 {
-    return true;
+    return _sdMounted.load();
 }
 
-std::vector<hal::HalBase::FileEntry_t> HalEsp32::scanSdCard(const std::string& dirPath)
+hal::HalBase::SdScanResult HalEsp32::scanSdCardResult(const std::string& dirPath)
 {
-    std::vector<hal::HalBase::FileEntry_t> file_entries;
-
-    mclog::tagInfo(_tag, "init sd card");
-    if (bsp_sdcard_init("/sd", 25) != ESP_OK) {
-        mclog::error("failed to mount sd card");
-        return file_entries;
-    }
-
-    std::string target_path = "/sd/" + dirPath;
-
-    DIR* dir = opendir(target_path.c_str());
-    if (dir == nullptr) {
-        mclog::error("failed to open directory: {}", target_path);
-        return file_entries;
-    }
-
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != nullptr) {
-        if (std::string(entry->d_name) == "." || std::string(entry->d_name) == "..") {
-            continue;
-        }
-
-        hal::HalBase::FileEntry_t file_entry;
-        file_entry.name  = entry->d_name;
-        file_entry.isDir = (entry->d_type == DT_DIR);
-        file_entries.push_back(file_entry);
-    }
-
-    closedir(dir);
-
-    mclog::tagInfo(_tag, "deinit sd card");
-    bsp_sdcard_deinit("/sd");
-
-    return file_entries;
+    static std::mutex mutex;
+    std::lock_guard<std::mutex> lock(mutex);
+    return hal::scanSdCardSession(
+        [&] {
+            const auto error = bsp_sdcard_init("/sd", 25);
+            if (error != ESP_OK)
+                return SdScanResult{SdScanStatus::MountFailed, {}, std::string("Could not mount SD card: ") + esp_err_to_name(error)};
+            _sdMounted.store(true);
+            return SdScanResult{SdScanStatus::Success, {}, {}};
+        },
+        [&] {
+            SdScanResult result{SdScanStatus::Success, {}, {}};
+            const auto path = std::string("/sd/") + dirPath;
+            DIR* dir = opendir(path.c_str());
+            if (!dir) return SdScanResult{SdScanStatus::ReadFailed, {}, "Could not open SD directory"};
+            for (;;) {
+                errno = 0;
+                auto* entry = readdir(dir);
+                if (!entry) {
+                    if (errno) result = {SdScanStatus::ReadFailed, {}, "Could not read SD directory"};
+                    break;
+                }
+                const std::string name = entry->d_name;
+                if (name == "." || name == "..") continue;
+                if (!hal::appendSdEntry(result, {name, entry->d_type == DT_DIR})) break;
+            }
+            if (closedir(dir) != 0) result = {SdScanStatus::ReadFailed, {}, "Could not close SD directory"};
+            return result;
+        },
+        [&] {
+            const bool ok = bsp_sdcard_deinit("/sd") == ESP_OK;
+            if (ok) _sdMounted.store(false);
+            return ok;
+        });
 }
 
 /* -------------------------------------------------------------------------- */
 /*                                  Interface                                 */
 /* -------------------------------------------------------------------------- */
+void HalEsp32::updateInterfaceData()
+{
+    std::lock_guard<std::mutex> ioLock(_interfaceIoMutex);
+    bool usbC = false;
+    bool headphone = false;
+    const auto result = bsp_read_interface_status(&usbC, &headphone);
+    if (result != ESP_OK) {
+        publishInterfaceError(std::string("Interface read failed: ") + esp_err_to_name(result));
+        return;
+    }
+    InterfaceData data;
+    data.usbC = usbC;
+    data.headphone = headphone;
+    data.usbCKnown = true;
+    data.headphoneKnown = true;
+    // HID-host events cannot establish general USB-A port presence.
+    data.usbAKnown = false;
+    data.valid = true;
+    data.hasSample = true;
+    data.sampledAtMs = millis();
+    publishInterfaceData(data);
+}
+
 bool HalEsp32::usbCDetect()
 {
-    return bsp_usb_c_detect();
-    // return false;
+    const auto data = getInterfaceData();
+    return data.valid && data.usbCKnown && data.usbC;
 }
 
 bool HalEsp32::headPhoneDetect()
 {
-    return bsp_headphone_detect();
+    const auto data = getInterfaceData();
+    return data.valid && data.headphoneKnown && data.headphone;
 }
 
 std::vector<uint8_t> HalEsp32::i2cScan(bool isInternal)

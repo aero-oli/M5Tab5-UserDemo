@@ -193,7 +193,7 @@ std::unique_ptr<mooncake::AppAbility> app_media_audio::makeHeadphoneApp()
     callbacks.stop = [] { GetHAL()->audioCancel(); };
     callbacks.start = [] { GetHAL()->startHeadphoneMicRecordTest(); };
     callbacks.micState = [] { return GetHAL()->getHeadphoneMicRecordTestState(); };
-    callbacks.headphoneDetected = [] { return GetHAL()->headPhoneDetect(); };
+    callbacks.interfaceStatus = [] { return GetHAL()->getInterfaceData(); };
     AudioToolConfig config;
     config.kind = AudioToolKind::Headphone;
     config.hasStop = true;

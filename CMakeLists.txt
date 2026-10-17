@@ -168,6 +168,7 @@ add_executable(switches_controller_tests
     app/apps/app_hardware_switches/switches_controller.cpp
 )
 target_include_directories(switches_controller_tests PUBLIC app)
+target_include_directories(switches_controller_tests SYSTEM PRIVATE dependencies/lvgl)
 target_compile_features(switches_controller_tests PUBLIC cxx_std_17)
 add_test(NAME switches_controller_tests COMMAND switches_controller_tests)
 
@@ -202,12 +203,14 @@ target_compile_features(display_sleep_gate_tests PUBLIC cxx_std_17)
 add_test(NAME display_sleep_gate_tests COMMAND display_sleep_gate_tests)
 
 add_executable(rtc_controller_tests
+    app/apps/runtime/async_job_runner.cpp
     tests/test_rtc_controller.cpp
     app/apps/app_hardware_rtc/rtc_controller.cpp
 )
 target_include_directories(rtc_controller_tests PUBLIC app)
 target_include_directories(rtc_controller_tests SYSTEM PUBLIC dependencies/lvgl)
 target_compile_features(rtc_controller_tests PUBLIC cxx_std_17)
+target_link_libraries(rtc_controller_tests PRIVATE pthread)
 add_test(NAME rtc_controller_tests COMMAND rtc_controller_tests)
 
 add_executable(imu_controller_tests
@@ -428,3 +431,29 @@ add_executable(audio_codec_transition_tests tests/test_audio_codec_transition.cp
 target_include_directories(audio_codec_transition_tests PRIVATE platforms/tab5/components/m5stack_tab5/include)
 target_compile_features(audio_codec_transition_tests PRIVATE cxx_std_17)
 add_test(NAME audio_codec_transition_tests COMMAND audio_codec_transition_tests)
+
+add_executable(home_status_tests tests/test_home_status.cpp)
+target_include_directories(home_status_tests PRIVATE app dependencies/mooncake/src)
+target_include_directories(home_status_tests SYSTEM PRIVATE dependencies/lvgl)
+target_link_libraries(home_status_tests PRIVATE mooncake mooncake_log)
+target_compile_features(home_status_tests PRIVATE cxx_std_17)
+add_test(NAME home_status_tests COMMAND home_status_tests)
+
+add_executable(rtc_calendar_tests tests/test_rtc_calendar.cpp app/modules/rtc/rx8130_calendar.cpp)
+target_include_directories(rtc_calendar_tests PRIVATE app)
+target_include_directories(rtc_calendar_tests SYSTEM PRIVATE dependencies/lvgl)
+target_compile_features(rtc_calendar_tests PRIVATE cxx_std_17)
+add_test(NAME rtc_calendar_tests COMMAND rtc_calendar_tests)
+
+add_executable(ina226_read_tests tests/test_ina226_reads.cpp
+    platforms/tab5/components/power_monitor_ina226/src/ina226.cpp)
+target_include_directories(ina226_read_tests PRIVATE tests/ina226_stubs
+    platforms/tab5/components/power_monitor_ina226/include)
+target_compile_features(ina226_read_tests PRIVATE cxx_std_17)
+add_test(NAME ina226_read_tests COMMAND ina226_read_tests)
+
+add_executable(interface_data_tests tests/test_interface_data.cpp)
+target_include_directories(interface_data_tests PRIVATE app)
+target_include_directories(interface_data_tests SYSTEM PRIVATE dependencies/lvgl)
+target_compile_features(interface_data_tests PRIVATE cxx_std_17)
+add_test(NAME interface_data_tests COMMAND interface_data_tests)

@@ -9,14 +9,14 @@
 
 using namespace app_hardware_sd;
 
-SdCardController::SdCardController(MountedFn mountedFn, ScanFn scanFn)
-    : _mountedFn(std::move(mountedFn)), _scanFn(std::move(scanFn))
+SdCardController::SdCardController(ScanFn scanFn)
+    : _scanFn(std::move(scanFn))
 {
 }
 
 bool SdCardController::startScan()
 {
-    if (!_mountedFn || !_scanFn) {
+    if (!_scanFn) {
         std::lock_guard<std::mutex> lock(_mutex);
         _statusText = "SD card scan is unavailable.";
         _busy = false;
@@ -24,12 +24,9 @@ bool SdCardController::startScan()
     }
 
     auto state = std::make_shared<ScanState>();
-    auto mountedFn = _mountedFn;
     auto scanFn = _scanFn;
-    if (!app_runtime::globalAsyncJobRunner().start("SD card scan", [state, mountedFn, scanFn]() {
-            const bool mounted = mountedFn();
-            auto files = mounted ? scanFn("/") : std::vector<hal::HalBase::FileEntry_t> {};
-            auto text = SdCardController::formatResult(mounted, files);
+    if (!app_runtime::globalAsyncJobRunner().start("SD card scan", [state, scanFn]() {
+            auto text = SdCardController::formatResult(scanFn("/"));
             std::lock_guard<std::mutex> lock(state->mutex);
             state->text = std::move(text);
             state->complete = true;
@@ -87,19 +84,20 @@ std::string SdCardController::statusText() const
     return _statusText;
 }
 
-std::string SdCardController::formatResult(bool mounted, const std::vector<hal::HalBase::FileEntry_t>& files)
+std::string SdCardController::formatResult(const hal::HalBase::SdScanResult& result)
 {
-    if (!mounted) {
-        return "No SD card mounted.";
+    using Status = hal::HalBase::SdScanStatus;
+    const std::string source = result.simulated ? "Desktop simulation: " : "";
+    switch (result.status) {
+        case Status::MountFailed: return source + "SD card mount failed. " + result.error;
+        case Status::ReadFailed: return source + "SD card scan failed. " + result.error;
+        case Status::Unavailable: return source + "SD card scan unavailable. " + result.error;
+        case Status::Success: break;
     }
-    if (files.empty()) {
-        return "SD card is mounted but no files were found.";
-    }
-
+    if (result.entries.empty()) return source + "SD card root is empty.";
     std::ostringstream out;
-    out << "SD card root:";
-    for (const auto& file : files) {
-        out << "\n" << (file.isDir ? "[DIR] " : "      ") << file.name;
-    }
+    out << source << "SD card root:";
+    for (const auto& file : result.entries) out << "\n" << (file.isDir ? "[DIR] " : "      ") << file.name;
+    if (result.truncated) out << "\nShowing first " << hal::HalBase::kMaxSdEntries << " entries.";
     return out.str();
 }

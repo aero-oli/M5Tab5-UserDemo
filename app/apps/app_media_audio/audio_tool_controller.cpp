@@ -32,6 +32,19 @@ AudioToolSample AudioToolController::sample() const
 {
     AudioToolSample result;
     result.detail = "Ready.";
+    auto headphoneDetail = [&]() -> std::string {
+        if (_kind != AudioToolKind::Headphone) return "Ready.";
+        if (_callbacks.interfaceStatus) {
+            const auto data = _callbacks.interfaceStatus();
+            if (!data.valid || !data.hasSample || !data.headphoneKnown)
+                return data.error.empty() ? "Headphone status unavailable." : "Headphone status unavailable: " + data.error;
+            const auto detail = data.headphone ? "Headset detected." : "No headset detected. The test can still be started.";
+            return data.simulated ? std::string("Simulated: ") + detail : detail;
+        }
+        if (_callbacks.headphoneDetected && !_callbacks.headphoneDetected())
+            return "No headset detected. The test can still be started.";
+        return "Ready.";
+    };
     if (_callbacks.status) {
         const auto status = _callbacks.status();
         result.busy = status.busy;
@@ -47,8 +60,7 @@ AudioToolSample AudioToolController::sample() const
         if (!status.lastError.empty()) result.detail = status.lastError;
         else if (status.phase == Phase::Cancelling) result.detail = "Stopping audio...";
         else if (status.busy) result.detail = "Audio codec in use.";
-        else if (_kind == AudioToolKind::Headphone && _callbacks.headphoneDetected && !_callbacks.headphoneDetected())
-            result.detail = "No headset detected. The test can still be started.";
+        else result.detail = headphoneDetail();
         return result;
     }
     if (_kind == AudioToolKind::Music) {
@@ -57,9 +69,7 @@ AudioToolSample AudioToolController::sample() const
     }
 
     result.state = micStateLabel(_callbacks.micState ? _callbacks.micState() : hal::HalBase::MIC_TEST_IDLE);
-    if (_kind == AudioToolKind::Headphone && _callbacks.headphoneDetected && !_callbacks.headphoneDetected()) {
-        result.detail = "No headset detected. The test can still be started.";
-    }
+    result.detail = headphoneDetail();
     return result;
 }
 

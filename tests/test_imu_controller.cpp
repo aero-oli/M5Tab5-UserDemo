@@ -5,6 +5,39 @@
 #include <thread>
 #include <apps/app_hardware_imu/imu_controller.h>
 
+struct SensorHal : hal::HalBase {
+    using HalBase::publishImuData;
+    using HalBase::publishImuError;
+};
+
+void test_health()
+{
+    SensorHal hardware;
+    hardware.updateImuData();
+    assert(!hardware.getImuData().valid && !hardware.getImuData().hasSample);
+    app_hardware_imu::ImuController controller([] {}, [&] { return hardware.getImuData(); });
+    controller.sample();
+    assert(app_runtime::AsyncJobRunner::waitForAll(5000));
+    assert(!controller.cached().hasSample);
+    assert(controller.statusText(controller.cached(), 100).find("Unavailable") != std::string::npos);
+    hal::HalBase::IMUData_t zero;
+    zero.valid = zero.hasSample = zero.simulated = true;
+    zero.sampledAtMs = 100;
+    hardware.publishImuData(zero);
+    controller.sample();
+    assert(app_runtime::AsyncJobRunner::waitForAll(5000));
+    auto sample = controller.cached();
+    assert(sample.hasSample && sample.valid && sample.accelX == 0);
+    assert(controller.statusText(sample, 100).find("Simulated") != std::string::npos);
+    assert(controller.statusText(sample, 2101).find("stale") != std::string::npos);
+    hardware.publishImuError("Injected I2C failure");
+    controller.sample();
+    assert(app_runtime::AsyncJobRunner::waitForAll(5000));
+    sample = controller.cached();
+    assert(!sample.valid && sample.hasSample && sample.sampledAtMs == 100 && sample.accelX == 0);
+    assert(controller.statusText(sample, 101).find("stale: Injected I2C failure") != std::string::npos);
+}
+
 int main()
 {
     using namespace std::chrono;
@@ -12,6 +45,7 @@ int main()
     std::promise<void> entered, release, readDone;
     auto gate = release.get_future().share();
     hal::HalBase::IMUData_t data;
+    data.valid = data.hasSample = true;
     data.accelX = 0.1234f;
     data.accelY = -0.5f;
     data.accelZ = 1.0f;
@@ -59,5 +93,6 @@ int main()
     }
     assert(reopened.cached().accelX == data.accelX);
     assert(app_runtime::AsyncJobRunner::waitForAll(5000));
+    test_health();
     return 0;
 }

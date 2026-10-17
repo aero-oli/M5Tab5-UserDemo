@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 #include "hal_desktop.h"
+#include <hal/sd_scan.h>
 #include <hal/profiles/tab5_gpio.h>
 #include <SDL2/SDL.h>
 #include <mooncake_log.h>
@@ -95,8 +96,16 @@ uint32_t HalDesktop::millis()
     return SDL_GetTicks();
 }
 
+bool HalDesktop::readCpuTemp(int& value)
+{
+    value = getCpuTemp();
+    return true; // Synthetic desktop sensor, labelled by the PM snapshot.
+}
+
 int HalDesktop::getCpuTemp()
 {
+    static std::mutex mutex;
+    std::lock_guard<std::mutex> lock(mutex);
     static std::random_device rd;
     static std::mt19937 gen(rd());
     static std::uniform_real_distribution<> dis(0.99, 1.01);
@@ -132,6 +141,8 @@ void HalDesktop::updatePowerMonitorData()
     data.busVoltage = dis(gen) * 8.0f;
     data.shuntCurrent = -dis(gen) * 0.5f;
     data.busPower = data.busVoltage * -data.shuntCurrent;
+    data.valid = data.hasSample = data.simulated = true;
+    data.sampledAtMs = millis();
     publishPowerMonitorData(data);
 }
 
@@ -186,6 +197,8 @@ void HalDesktop::updateImuData()
     data.accelX = dis(gen);
     data.accelY = dis(gen);
     data.accelZ = dis(gen);
+    data.valid = data.hasSample = data.simulated = true;
+    data.sampledAtMs = millis();
     publishImuData(data);
 }
 
@@ -401,38 +414,67 @@ void HalDesktop::otaRebootToApply()
 /* -------------------------------------------------------------------------- */
 bool HalDesktop::isSdCardMounted()
 {
-    return true;
+    return false; // Desktop directory scans do not mount hardware.
 }
 
-std::vector<hal::HalBase::FileEntry_t> HalDesktop::scanSdCard(const std::string& dirPath)
+hal::HalBase::SdScanResult HalDesktop::scanSdCardResult(const std::string& dirPath)
 {
-    std::filesystem::path path(dirPath);
-    std::vector<hal::HalBase::FileEntry_t> file_entries;
-    for (const auto& entry : std::filesystem::directory_iterator(path)) {
-        file_entries.push_back({entry.path().filename().string(), entry.is_directory()});
+    SdScanResult result{SdScanStatus::Success, {}, {}, true};
+    std::error_code error;
+    std::filesystem::directory_iterator it(dirPath, error), end;
+    if (error) return {SdScanStatus::ReadFailed, {}, "Could not open desktop directory: " + error.message(), true};
+    for (; it != end; it.increment(error)) {
+        if (error) break;
+        const bool isDir = it->is_directory(error);
+        if (error) break;
+        if (!hal::appendSdEntry(result, {it->path().filename().string(), isDir})) break;
     }
-    return file_entries;
+    if (error) return {SdScanStatus::ReadFailed, {}, "Could not read desktop directory: " + error.message(), true};
+    return result;
 }
 
 /* -------------------------------------------------------------------------- */
 /*                                  Interface                                 */
 /* -------------------------------------------------------------------------- */
+void HalDesktop::updateInterfaceData()
+{
+    std::lock_guard<std::mutex> ioLock(_interfaceIoMutex);
+    const char* fail = std::getenv("M5TAB5_DESKTOP_INTERFACE_FAIL");
+    if (fail && fail[0] == '1') {
+        auto data = getInterfaceData();
+        data.valid = false;
+        data.simulated = true;
+        data.error = "Simulated interface read failure";
+        publishInterfaceData(data);
+        return;
+    }
+    InterfaceData data;
+    data.valid = true;
+    data.hasSample = true;
+    data.simulated = true;
+    data.usbCKnown = true;
+    data.headphoneKnown = true;
+    data.usbAKnown = false;
+    data.sampledAtMs = millis();
+    publishInterfaceData(data);
+}
+
 bool HalDesktop::usbCDetect()
 {
-    // return rand() % 2 == 0;
-    return false;
+    const auto data = getInterfaceData();
+    return data.valid && data.usbCKnown && data.usbC;
 }
 
 bool HalDesktop::usbADetect()
 {
-    // return rand() % 2 == 0;
-    return false;
+    const auto data = getInterfaceData();
+    return data.valid && data.usbAKnown && data.usbA;
 }
 
 bool HalDesktop::headPhoneDetect()
 {
-    // return rand() % 2 == 0;
-    return false;
+    const auto data = getInterfaceData();
+    return data.valid && data.headphoneKnown && data.headphone;
 }
 
 std::vector<uint8_t> HalDesktop::i2cScan(bool isInternal)

@@ -32,7 +32,8 @@ public:
         }
         if (!_runner->start(name, [state, read = std::move(read)] {
                 auto value = read();
-                value.hasSample = true;
+                // A completed read may be unavailable or stale. Its health metadata
+                // belongs to the sampler, not to background-job completion.
                 value.pending = false;
                 std::lock_guard<std::mutex> lock(state->mutex);
                 state->value = value;

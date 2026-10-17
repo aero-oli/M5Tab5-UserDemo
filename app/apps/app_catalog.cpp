@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 #include "app_catalog.h"
+#include "app_launcher/home_status.h"
 
 #include <cstdio>
 #include <memory>
@@ -135,11 +136,7 @@ void app_catalog::registerDefaultApps(AppRegistry& apps)
               true,
               [] { return app_hardware_rtc::makeRtcApp(); },
               [] {
-                  tm now = {};
-                  GetHAL()->getRtcTime(&now);
-                  char text[16];
-                  std::snprintf(text, sizeof(text), "%02d:%02d", now.tm_hour, now.tm_min);
-                  return AppStatus{text, StatusLevel::Neutral};
+                  return launcher_view::clockStatus(GetHAL()->getRtcData(), GetHAL()->millis());
               }});
     apps.add({AppKey::Imu,
               AppCategory::Hardware,
@@ -165,10 +162,7 @@ void app_catalog::registerDefaultApps(AppRegistry& apps)
               true,
               [] { return app_hardware_power_monitor::makePowerMonitorApp(); },
               [] {
-                  char text[24];
-                  const auto data = GetHAL()->getPowerMonitorData();
-                  std::snprintf(text, sizeof(text), "%.2fV %.2fW", data.busVoltage, data.busPower);
-                  return AppStatus{text, StatusLevel::Ok};
+                  return launcher_view::powerStatus(GetHAL()->getPowerMonitorData(), GetHAL()->millis());
               }});
     apps.add({AppKey::Switches,
               AppCategory::Hardware,
@@ -181,7 +175,13 @@ void app_catalog::registerDefaultApps(AppRegistry& apps)
               false,
               true,
               [] { return app_hardware_switches::makeSwitchesApp(); },
-              [] { return AppStatus{GetHAL()->usbCDetect() ? "USB-C" : "Ports", StatusLevel::Neutral}; }});
+              [] {
+                  const auto data = GetHAL()->getInterfaceData();
+                  if (!data.valid || !data.hasSample || !data.usbCKnown || GetHAL()->millis() - data.sampledAtMs > 2000)
+                      return AppStatus{"Ports unknown", StatusLevel::Warning};
+                  return AppStatus{std::string(data.simulated ? "Sim " : "") +
+                      (data.usbC ? "USB-C connected" : "USB-C absent"), StatusLevel::Neutral};
+              }});
     apps.add({AppKey::I2cScan,
               AppCategory::Hardware,
               "I2C Scan",
@@ -242,8 +242,11 @@ void app_catalog::registerDefaultApps(AppRegistry& apps)
               true,
               [] { return app_media_audio::makeHeadphoneApp(); },
               [] {
-                  return AppStatus{GetHAL()->headPhoneDetect() ? "Connected" : "Not detected",
-                                   GetHAL()->headPhoneDetect() ? StatusLevel::Ok : StatusLevel::Neutral};
+                  const auto data = GetHAL()->getInterfaceData();
+                  if (!data.valid || !data.hasSample || !data.headphoneKnown || GetHAL()->millis() - data.sampledAtMs > 2000)
+                      return AppStatus{"Detection unknown", StatusLevel::Warning};
+                  return AppStatus{std::string(data.simulated ? "Sim " : "") +
+                      (data.headphone ? "Detected" : "Not detected"), StatusLevel::Neutral};
               }});
     apps.add({AppKey::Music,
               AppCategory::Media,
@@ -260,18 +263,15 @@ void app_catalog::registerDefaultApps(AppRegistry& apps)
     apps.add({AppKey::SdCard,
               AppCategory::Hardware,
               "SD Card",
-              "Browse mounted SD card",
-              "",
+              "Scan SD card files",
+              "Open to scan",
               LV_SYMBOL_SD_CARD,
               10,
               50,
               false,
               true,
               [] { return app_hardware_sd::makeSdCardApp(); },
-              [] {
-                  return AppStatus{GetHAL()->isSdCardMounted() ? "Mounted" : "No card",
-                                   GetHAL()->isSdCardMounted() ? StatusLevel::Ok : StatusLevel::Warning};
-              }});
+              StatusProvider{}});
     apps.add({AppKey::ComMonitor,
               AppCategory::Hardware,
               "COM Monitor",

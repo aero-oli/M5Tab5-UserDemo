@@ -363,6 +363,16 @@ static bool desktopHasLabel(lv_obj_t* object, const char* text)
     return false;
 }
 
+static bool desktopHasLabelContaining(lv_obj_t* object, const char* text)
+{
+    if (lv_obj_check_type(object, &lv_label_class) &&
+        std::string(lv_label_get_text(object)).find(text) != std::string::npos) return true;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(object); ++i) {
+        if (desktopHasLabelContaining(lv_obj_get_child(object, i), text)) return true;
+    }
+    return false;
+}
+
 static void desktopPressKeyboardKey(lv_obj_t* keyboard, const char* key)
 {
     // Exercise LVGL's own keyboard handler, including its nested Ready/Cancel events.
@@ -617,6 +627,64 @@ static void desktopAssertNetworkSelection()
     }
     desktopClickNetworkAction("Stop AP");
     desktopWaitForWifiState(hal::HalBase::WifiConnectionState::Idle, "Idle");
+}
+
+static void desktopAssertRtcWorkflow()
+{
+    auto check = [](bool ok, const char* reason) {
+        if (!ok) { mclog::tagError(_tag, "desktop RTC workflow: {}", reason); std::abort(); }
+    };
+    auto waitFor = [](const char* text) {
+        const auto started = GetHAL()->millis();
+        while (GetHAL()->millis() - started < 3000) {
+            desktopPumpLifecycle();
+            {
+                LvglLockGuard lock;
+                auto* root = desktopTopFullscreenRoot();
+                auto* button = desktopFindButton(root, "Set clock");
+                if (desktopHasLabelContaining(root, text) && button &&
+                    !lv_obj_has_state(button, LV_STATE_DISABLED)) return;
+            }
+            SDL_Delay(5);
+        }
+        mclog::tagError(_tag, "desktop RTC workflow timed out: {}", text);
+        std::abort();
+    };
+    if (desktopEnvEnabled("M5TAB5_DESKTOP_RTC_FAIL")) {
+        waitFor("Simulated RTC read failure");
+        desktopSaveUiCapture("RTC-read-failed");
+        return;
+    }
+    const bool initialize = desktopEnvEnabled("M5TAB5_DESKTOP_RTC_INVALID");
+    waitFor(initialize ? "initialization required" : "Simulated clock");
+    {
+        LvglLockGuard lock;
+        std::vector<lv_obj_t*> fields;
+        auto* root = desktopTopFullscreenRoot();
+        desktopCollectTextFields(root, fields);
+        check(fields.size() == 2, "expected date and time fields");
+        lv_textarea_set_text(fields[0], "2026-02-30");
+        lv_textarea_set_text(fields[1], "12:34:56");
+        desktopClickNetworkAction("Set clock");
+        check(desktopHasLabelContaining(root, "Invalid date/time") && !desktopFindButton(root, "Confirm"), "invalid calendar reached confirmation");
+        lv_textarea_set_text(fields[0], "2028-02-29");
+        desktopClickNetworkAction("Set clock");
+        // LVGL's fitted labels restore their full text after deferred layout.
+        lv_obj_update_layout(root);
+        check(desktopHasLabel(root, initialize ? "Initialize RTC and set time?" : "Set clock?"), "valid calendar did not reach confirmation");
+        desktopSaveUiCapture("RTC-confirmation");
+        desktopClickNetworkAction("Cancel");
+        check(!desktopFindButton(root, "Confirm"), "Cancel left confirmation visible");
+        desktopClickNetworkAction("Set clock");
+        desktopClickNetworkAction("Confirm");
+    }
+    waitFor("Clock set and readback verified");
+    const auto result = GetHAL()->getRtcData();
+    check(result.valid && !result.needsInitialization && result.time.tm_year == 128 &&
+        result.time.tm_mon == 1 && result.time.tm_mday == 29 && result.time.tm_hour == 12 &&
+        result.time.tm_min == 34, "verified result differs from requested calendar");
+    if (!desktopValidateNonScrollableBounds("RTC setting")) std::abort();
+    desktopSaveUiCapture("RTC-set-verified");
 }
 
 static size_t desktopTimerCount()
@@ -1182,6 +1250,9 @@ static void desktopAssertAllRegisteredAppsUi()
         }
         if (registeredApp.key == app_registry::AppKey::Camera) {
             desktopAssertCameraWorkflow();
+        }
+        if (registeredApp.key == app_registry::AppKey::Rtc) {
+            desktopAssertRtcWorkflow();
         }
         if (registeredApp.key == app_registry::AppKey::Pps) {
             desktopAssertPpsWorkflow();

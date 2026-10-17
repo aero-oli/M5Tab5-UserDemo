@@ -55,12 +55,23 @@ void test_set_switch_dispatches_to_hal_binding()
 void test_formats_interface_status()
 {
     app_hardware_switches::InterfaceSnapshot snapshot;
+    snapshot.valid = true;
+    snapshot.hasSample = true;
+    snapshot.usbCKnown = true;
+    snapshot.headphoneKnown = true;
     snapshot.usbC = true;
     snapshot.usbA = false;
     snapshot.headphone = true;
 
     assert(app_hardware_switches::SwitchesController::formatInterfaceStatus(snapshot) ==
-           "USB-C: connected    USB-A: off    Headphone: connected");
+           "USB-C: connected    USB-A: unknown    Headphone: connected");
+    snapshot.valid = false;
+    snapshot.error = "Read failed";
+    assert(app_hardware_switches::SwitchesController::formatInterfaceStatus(snapshot) ==
+           "USB-C: unknown    USB-A: unknown    Headphone: unknown (stale)");
+    snapshot.valid = true;
+    snapshot.simulated = true;
+    assert(app_hardware_switches::SwitchesController::formatInterfaceStatus(snapshot).find("Simulated: ") == 0);
 }
 
 }  // namespace

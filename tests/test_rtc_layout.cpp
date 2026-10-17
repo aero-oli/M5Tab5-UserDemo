@@ -11,6 +11,9 @@ static void test_rtc_regions_fit_visible_content()
     assert(app_ui::containsLocal(layout.content, layout.timeCard));
     assert(app_ui::containsLocal(layout.content, layout.dateCard));
     assert(app_ui::containsLocal(layout.content, layout.sourcePanel));
+    assert(app_ui::containsLocal(layout.content, layout.dateInput));
+    assert(app_ui::containsLocal(layout.content, layout.timeInput));
+    assert(app_ui::containsLocal(layout.content, layout.setButton));
 }
 
 static void test_rtc_metric_cards_have_stable_spacing()

@@ -383,6 +383,9 @@ void bsp_set_ext_5v_en(bool en);
 
 void bsp_generate_poweroff_signal();
 
+// Checked worker-only read; outputs change only after both expander reads succeed.
+esp_err_t bsp_read_interface_status(bool *usb_c, bool *headphone);
+
 bool bsp_headphone_detect();
 
 void bsp_set_ext_antenna_enable(bool en);

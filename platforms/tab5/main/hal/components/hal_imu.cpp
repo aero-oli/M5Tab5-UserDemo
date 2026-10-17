@@ -53,7 +53,10 @@ void HalEsp32::updateImuData()
     std::lock_guard<std::mutex> lock(_imuIoMutex);
     IMUData_t data;
     struct bmi2_sens_data bmi_sensor_data = {};
-    if (!accel_gyro_bmi270_get_data(&bmi_sensor_data)) return;
+    if (!accel_gyro_bmi270_get_data(&bmi_sensor_data)) {
+        publishImuError("IMU read failed");
+        return;
+    }
 
     /* 根据设置量程转换 */
     data.accelX = bmi_sensor_data.acc.y / 835.92 / 10.0f;  // m/s^2
@@ -62,5 +65,7 @@ void HalEsp32::updateImuData()
     data.gyroX  = bmi_sensor_data.gyr.y / 32.768 / 10.0f;  // °/s   gyro_raw*2*1000/2^16 --> 0.0305
     data.gyroY  = bmi_sensor_data.gyr.x / 32.768 / 10.0f;
     data.gyroZ  = -bmi_sensor_data.gyr.z / 32.768 / 10.0f;
+    data.valid = data.hasSample = true;
+    data.sampledAtMs = millis();
     publishImuData(data);
 }

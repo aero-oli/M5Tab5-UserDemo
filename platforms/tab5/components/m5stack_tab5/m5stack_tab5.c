@@ -424,6 +424,24 @@ void bsp_generate_poweroff_signal()
     }
 }
 
+esp_err_t bsp_read_interface_status(bool* usb_c, bool* headphone)
+{
+    if (!usb_c || !headphone) return ESP_ERR_INVALID_ARG;
+    if (!i2c_dev_handle_pi4ioe1 || !i2c_dev_handle_pi4ioe2) return ESP_ERR_INVALID_STATE;
+    const uint8_t reg = PI4IO_REG_IN_STA;
+    uint8_t expander1 = 0;
+    uint8_t expander2 = 0;
+    esp_err_t ret = i2c_master_transmit_receive(i2c_dev_handle_pi4ioe1, &reg, 1, &expander1, 1,
+                                              I2C_MASTER_TIMEOUT_MS);
+    if (ret != ESP_OK) return ret;
+    ret = i2c_master_transmit_receive(i2c_dev_handle_pi4ioe2, &reg, 1, &expander2, 1,
+                                     I2C_MASTER_TIMEOUT_MS);
+    if (ret != ESP_OK) return ret;
+    *headphone = (expander1 & 0x80) != 0;
+    *usb_c = (expander2 & 0x40) != 0;
+    return ESP_OK;
+}
+
 bool bsp_headphone_detect()
 {
     uint8_t write_buf[2] = {0};

@@ -9,7 +9,6 @@
 #include <lvgl.h>
 #include <atomic>
 #include <hal/display_sleep_gate.h>
-#include "utils/rx8130/rx8130.h"
 
 class HalEsp32 : public hal::HalBase {
 public:
@@ -24,9 +23,9 @@ public:
     void delay(uint32_t ms) override;
     uint32_t millis() override;
     int getCpuTemp() override;
+    bool readCpuTemp(int& value) override;
 
     INA226 ina226;
-    RX8130_Class rx8130;
     lv_disp_t* lvDisp      = nullptr;
     lv_indev_t* lvKeyboard = nullptr;
 
@@ -41,7 +40,8 @@ public:
     void clearImuIrq() override;
 
     void clearRtcIrq() override;
-    void setRtcTime(tm time) override;
+    void updateRtcData() override;
+    bool setRtcTimeChecked(const tm& time, bool initialize = false) override;
 
     void setChargeQcEnable(bool enable) override;
     bool getChargeQcEnable() override;
@@ -96,8 +96,9 @@ public:
     void otaRebootToApply() override;
 
     bool isSdCardMounted() override;
-    std::vector<FileEntry_t> scanSdCard(const std::string& dirPath) override;
+    SdScanResult scanSdCardResult(const std::string& dirPath) override;
 
+    void updateInterfaceData() override;
     bool usbCDetect() override;
     bool usbADetect() override;
     bool headPhoneDetect() override;
@@ -114,6 +115,7 @@ public:
     hal::GpioOutputState gpioGetOutputState(uint8_t pin) override;
 
 private:
+    std::atomic<bool> _sdMounted {false};
     static void readSleepTouch(lv_indev_t* indev, lv_indev_data_t* data);
     static HalEsp32* _sleepOwner;
     std::mutex _powerActionMutex;

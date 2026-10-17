@@ -23,6 +23,7 @@ struct AudioToolCallbacks {
     std::function<hal::HalBase::MicTestState_t()> micState;
     std::function<hal::HalBase::MusicPlayState_t()> musicState;
     std::function<bool()> headphoneDetected;
+    std::function<hal::HalBase::InterfaceData()> interfaceStatus;
     std::function<hal::HalBase::AudioStatus()> status;
 };
 

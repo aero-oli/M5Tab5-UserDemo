@@ -10,6 +10,7 @@
 #include <vector>
 #include <lvgl.h>
 #include <apps/app_registry.h>
+#include <apps/runtime/async_job_runner.h>
 
 namespace launcher_view {
 
@@ -30,6 +31,8 @@ private:
     struct TileAction {
         LauncherView* view = nullptr;
         app_registry::AppKey key = app_registry::AppKey::Rtc;
+        lv_obj_t* status = nullptr;
+        std::string lastStatus;
     };
 
     struct SummaryRow {
@@ -55,6 +58,9 @@ private:
     std::string _lastStatusText;
     std::string _lastTimeText;
     uint32_t _lastSummaryRefreshMs = 0;
+    uint32_t _lastHardwarePollMs = 0;
+    bool _hardwarePolled = false;
+    app_runtime::AsyncJobRunner _statusSampler;
 
     void createLayout();
     void renderCategories();
@@ -62,6 +68,7 @@ private:
     void renderTiles();
     void buildSummary();
     void renderSummary();
+    void requestHardwareStatus(uint32_t nowMs);
     void selectCategory(app_registry::AppCategory category);
     void openApp(app_registry::AppKey key);
 

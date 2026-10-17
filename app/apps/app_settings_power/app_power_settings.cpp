@@ -118,7 +118,8 @@ private:
     void refresh()
     {
         const auto state = _controller.state();
-        setText(lv_obj_get_child(_battery, 1), state.hasSample ? PowerSettingsController::formatBatteryInput(state.sample) : "--");
+        setText(lv_obj_get_child(_battery, 1), state.hasSample ? PowerSettingsController::formatBatteryInput(state.sample) +
+                (!state.sampleValid || GetHAL()->millis() - state.sampledAtMs > 2000 ? " (stale)" : state.sampleSimulated ? " (simulated)" : "") : "Unavailable");
         const char* status = "Ready";
         switch (state.state) {
             case PowerState::Ready: break;

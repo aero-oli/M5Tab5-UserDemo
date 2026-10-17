@@ -64,6 +64,23 @@ int main()
     sample = reporting.sample();
     assert(sample.state == "Failed" && sample.detail == status.lastError);
 
+    hal::HalBase::InterfaceData interfaces;
+    app_media_audio::AudioToolCallbacks interfaceCallbacks;
+    interfaceCallbacks.status = [] { return hal::HalBase::AudioStatus {}; };
+    interfaceCallbacks.interfaceStatus = [&] { return interfaces; };
+    AudioToolController headset(AudioToolKind::Headphone, interfaceCallbacks);
+    assert(headset.sample().detail == "Headphone status unavailable.");
+    interfaces.valid = true;
+    interfaces.hasSample = true;
+    interfaces.headphoneKnown = true;
+    assert(headset.sample().detail == "No headset detected. The test can still be started.");
+    interfaces.headphone = true;
+    interfaces.simulated = true;
+    assert(headset.sample().detail == "Simulated: Headset detected.");
+    interfaces.valid = false;
+    interfaces.error = "Expander timeout";
+    assert(headset.sample().detail == "Headphone status unavailable: Expander timeout");
+
     assert(AudioToolController::micStateLabel(hal::HalBase::MIC_TEST_IDLE) == std::string("Idle"));
     assert(AudioToolController::musicStateLabel(hal::HalBase::MUSIC_PLAY_IDLE) == std::string("Idle"));
 

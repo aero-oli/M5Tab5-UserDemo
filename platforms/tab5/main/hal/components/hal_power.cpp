@@ -24,10 +24,12 @@ void HalEsp32::updatePowerMonitorData()
 {
     std::lock_guard<std::mutex> lock(_powerMonitorIoMutex);
     PMData_t data;
-    data.busVoltage = ina226.readBusVoltage();
-    data.shuntVoltage = ina226.readShuntVoltage();
-    data.busPower = ina226.readBusPower();
-    data.shuntCurrent = ina226.readShuntCurrent();
+    if (!ina226.readMeasurements(data.busVoltage, data.busPower, data.shuntVoltage, data.shuntCurrent)) {
+        publishPowerMonitorError("Power monitor read failed");
+        return;
+    }
+    data.valid = data.hasSample = true;
+    data.sampledAtMs = millis();
     publishPowerMonitorData(data);
 }
 
@@ -142,6 +144,7 @@ hal::PowerResult HalEsp32::performPowerAction(hal::PowerAction action, uint16_t 
     if (action == hal::PowerAction::SleepRtc && (rtcMinutes < 1 || rtcMinutes > 60))
         return {false, false, false, "Wake interval must be 1-60 minutes"};
 
+    std::lock_guard<std::mutex> rtcLock(_rtcIoMutex);
     modules::HalI2cDevice rtcDevice(hal::ModuleBus::MBus, 0x32);
     rtc::Rx8130WakeTimer timer(rtcDevice);
     auto failed = [&](const std::string& message) {

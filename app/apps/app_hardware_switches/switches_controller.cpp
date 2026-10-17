@@ -32,9 +32,15 @@ InterfaceSnapshot SwitchesController::readInterface() const
 
 std::string SwitchesController::formatInterfaceStatus(const InterfaceSnapshot& snapshot)
 {
-    char buffer[96];
-    std::snprintf(buffer, sizeof(buffer), "USB-C: %s    USB-A: %s    Headphone: %s",
-                  snapshot.usbC ? "connected" : "off", snapshot.usbA ? "connected" : "off",
-                  snapshot.headphone ? "connected" : "off");
+    const bool available = snapshot.valid && snapshot.hasSample;
+    const auto label = [available](bool known, bool connected) {
+        return !available || !known ? "unknown" : connected ? "connected" : "off";
+    };
+    char buffer[160];
+    std::snprintf(buffer, sizeof(buffer), "%sUSB-C: %s    USB-A: %s    Headphone: %s%s",
+                  snapshot.simulated ? "Simulated: " : "",
+                  label(snapshot.usbCKnown, snapshot.usbC), label(snapshot.usbAKnown, snapshot.usbA),
+                  label(snapshot.headphoneKnown, snapshot.headphone),
+                  !snapshot.valid && snapshot.hasSample ? " (stale)" : "");
     return buffer;
 }

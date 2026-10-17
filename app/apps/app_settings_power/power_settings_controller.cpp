@@ -49,8 +49,15 @@ struct PowerSettingsController::Worker {
                 const auto data = sample();
                 const bool sleeping = asleep();
                 std::lock_guard<std::mutex> lock(mutex);
-                state.hasSample = std::isfinite(data.busVoltage) && std::isfinite(data.busPower);
-                if (state.hasSample) state.sample = {data.busVoltage, data.busPower};
+                const bool hasLastGood = data.hasSample && std::isfinite(data.busVoltage) && std::isfinite(data.busPower);
+                state.sampleValid = data.valid && hasLastGood;
+                state.sampleError = data.error;
+                state.sampleSimulated = data.simulated;
+                if (hasLastGood) {
+                    state.hasSample = true;
+                    state.sampledAtMs = data.sampledAtMs;
+                    state.sample = {data.busVoltage, data.busPower};
+                }
                 if (state.displayAsleep && !sleeping &&
                     (state.state == PowerState::DisplayAsleep || state.state == PowerState::Failed)) {
                     state.state = PowerState::Ready;

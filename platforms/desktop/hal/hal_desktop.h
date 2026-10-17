@@ -22,6 +22,7 @@ public:
     void delay(uint32_t ms) override;
     uint32_t millis() override;
     int getCpuTemp() override;
+    bool readCpuTemp(int& value) override;
 
     void setDisplayBrightness(uint8_t brightness) override;
     uint8_t getDisplayBrightness() override;
@@ -51,6 +52,8 @@ public:
     void playStartupSfx() override;
     void playShutdownSfx() override;
 
+    void updateRtcData() override;
+    bool setRtcTimeChecked(const tm& time, bool initialize = false) override;
     void updatePowerMonitorData() override;
     void setChargeQcEnable(bool enable) override;
     bool getChargeQcEnable() override;
@@ -82,8 +85,9 @@ public:
     void otaRebootToApply() override;
 
     bool isSdCardMounted() override;
-    std::vector<FileEntry_t> scanSdCard(const std::string& dirPath) override;
+    SdScanResult scanSdCardResult(const std::string& dirPath) override;
 
+    void updateInterfaceData() override;
     bool usbCDetect() override;
     bool usbADetect() override;
     bool headPhoneDetect() override;
@@ -125,6 +129,9 @@ private:
     uint32_t _cameraStartedMs = 0;
     int _cameraNextBuffer = 0;
 
+    tm _rtcSimulatedTime{};
+    uint32_t _rtcSimulatedAtMs = 0;
+    bool _rtcSimulatedSet = false;
     void updateCameraFrame();
     void detachCamera();
 

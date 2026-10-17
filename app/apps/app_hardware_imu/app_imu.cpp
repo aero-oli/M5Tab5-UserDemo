@@ -101,7 +101,7 @@ private:
     void refresh()
     {
         const auto sample = _controller.sample();
-        lv_label_set_text(_detail, sample.hasSample ? "Sampling: up to 4 Hz while this app is open" : "Waiting for first IMU sample...");
+        lv_label_set_text(_detail, ImuController::statusText(sample, GetHAL()->millis()).c_str());
         setMetric(_accelX, "Accel X", sample.hasSample ? ImuController::formatAccel(sample.accelX).c_str() : "--");
         setMetric(_accelY, "Accel Y", sample.hasSample ? ImuController::formatAccel(sample.accelY).c_str() : "--");
         setMetric(_accelZ, "Accel Z", sample.hasSample ? ImuController::formatAccel(sample.accelZ).c_str() : "--");

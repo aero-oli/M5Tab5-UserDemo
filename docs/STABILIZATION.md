@@ -31,7 +31,7 @@ Do not describe a desktop simulator pass as electrical, DMA, wake, radio or OTA 
 | 1 | Preserve baseline, record builds and feature parity | Source checkpoint verified |
 | 2 | Single UI lifecycle owner, synchronized network snapshots, nonblocking sensor sampling, worker shutdown and device instrumentation | Software gate passed: 56/56 desktop tests; Tab5 build |
 | 3 | Camera failed-stop safety, BMI270 wake rollback, audio ownership/cancellation, brightness recovery, visible PPS off failure | Software gate passed: 61/61 desktop tests; focused final rerun; Tab5 build |
-| 4 | Truthful RTC/SD/sensor results, restore RTC setting, fresh Home status | Pending |
+| 4 | Truthful RTC/SD/sensor results, restore RTC setting, fresh Home status | Software gate passed: 65/65 desktop tests; RTC fault journeys; Tab5 build |
 | 5 | Wi-Fi restoration/recovery; verified HTTPS OTA, progress, cancellation, confirmation and recovery | Pending |
 | 6 | Focused Home, exact PPS entry, populated logs/files/networks, keyboard/error/busy journeys | Pending |
 | 7 | Build/test CI, separate smoke harness, extension contracts, device acceptance and release procedure | Pending |
@@ -108,3 +108,24 @@ The current SDK has a one-second I2S transfer timeout and 100 ms codec-control I
 mute/volume setters discard some underlying driver errors, so API return checks do not prove those
 physical writes. Playback quality, physical cancellation latency, DMA faults, touch/motion/timed wake,
 PPS output-off behaviour and restoration on the actual board remain device acceptance gates.
+
+## Milestone 4 data contracts
+
+Verified 2026-10-17: desktop build and 65/65 CTest tests; additional full UI runs with invalid RTC and
+RTC/interface read failures; Tab5 firmware build. RTC calendar/controller and PM/IMU/SD/Power Settings
+focused tests also passed sanitizer runs. Rendered RTC setting/confirmation and Home screens were inspected.
+Independent ownership review found no blocking cache, RTC lock, SD session or teardown issue.
+
+UI getters return copied snapshots, never hardware reads. PM, IMU, RTC and interface snapshots distinguish
+the current attempt's validity from the presence/time of a previous successful sample. Failed transactions
+retain that prior sample, and views mark failure/staleness rather than displaying unchecked zero values.
+Home refreshes PM/RTC/interface data in a registered worker. CPU temperature has independent validity;
+USB-A connection presence is explicitly unknown where the backend cannot establish it.
+
+RTC reads check BCD fields, calendar/weekday consistency, oscillator validity and transaction results.
+Normal writes preserve wake registers and verify the calendar; confirmed initialization is required after
+invalid oscillator/stopped-clock state and clears wake configuration. The recovery register sequence follows
+the [Epson RX8130CE manual](https://download.epsondevice.com/td/pdf/app/RX8130CE_en.pdf); its backup-charge
+policy retains the board's original setting for the [Tab5 supercapacitor](https://docs.m5stack.com/en/core/Tab5).
+Desktop clock changes affect only the simulator. SD scans own a serialized temporary mount, always attempt
+cleanup after reads, distinguish empty results from failure, and cap results at 256 entries with a notice.

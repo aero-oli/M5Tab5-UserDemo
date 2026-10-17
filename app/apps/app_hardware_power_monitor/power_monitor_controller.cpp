@@ -5,7 +5,6 @@
  */
 #include "power_monitor_controller.h"
 
-#include <cmath>
 #include <cstdio>
 
 using namespace app_hardware_power_monitor;
@@ -38,11 +37,16 @@ PowerSample PowerMonitorController::sample()
         update();
         const auto data = dataFn();
         PowerSample value;
+        value.valid = data.valid;
+        value.hasSample = data.hasSample;
+        value.simulated = data.simulated;
+        value.sampledAtMs = data.sampledAtMs;
+        value.error = data.error;
         value.busVoltage = data.busVoltage;
         value.current = data.shuntCurrent;
         value.shuntVoltage = data.shuntVoltage;
-        value.outputPower = std::fabs(data.busPower) > 0.001f ? data.busPower : data.busVoltage * std::fabs(data.shuntCurrent);
-        value.cpuTempC = cpuTemp();
+        value.outputPower = data.busPower;
+        value.cpuTempValid = cpuTemp(value.cpuTempC);
         return value;
     });
 }
@@ -50,6 +54,15 @@ PowerSample PowerMonitorController::sample()
 PowerSample PowerMonitorController::cached() const
 {
     return _samples.cached();
+}
+
+std::string PowerMonitorController::statusText(const PowerSample& sample, uint32_t nowMs)
+{
+    const auto source = sample.simulated ? "Simulated" : "Hardware";
+    if (!sample.hasSample) return sample.error.empty() ? "Waiting for first power sample..." : "Unavailable: " + sample.error;
+    if (!sample.valid || nowMs - sample.sampledAtMs > 2000)
+        return std::string(source) + " - stale" + (sample.error.empty() ? "" : ": " + sample.error);
+    return std::string(source) + " - up to 4 Hz while open";
 }
 
 std::string PowerMonitorController::formatVoltage(const PowerSample& sample)
@@ -78,7 +91,7 @@ std::string PowerMonitorController::formatPower(const PowerSample& sample)
 
 std::string PowerMonitorController::formatCpuTemp(const PowerSample& sample)
 {
-    if (!sample.hasSample) {
+    if (!sample.cpuTempValid) {
         return "--";
     }
     char buffer[24];

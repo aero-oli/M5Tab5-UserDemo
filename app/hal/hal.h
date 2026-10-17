@@ -65,6 +65,12 @@ public:
         return 0.0f;
     }
 
+    virtual bool readCpuTemp(int& value)
+    {
+        (void)value;
+        return false;
+    }
+
     /* --------------------------------- Display -------------------------------- */
     virtual int getDisplayWidth()
     {
@@ -97,6 +103,11 @@ public:
         float busPower     = 0.0f;
         float shuntVoltage = 0.0f;
         float shuntCurrent = 0.0f;
+        bool valid = false;
+        bool hasSample = false;
+        bool simulated = false;
+        uint32_t sampledAtMs = 0;
+        std::string error;
     };
     PMData_t getPowerMonitorData()
     {
@@ -105,6 +116,7 @@ public:
     }
     virtual void updatePowerMonitorData()
     {
+        publishPowerMonitorError("Power monitor unavailable");
     }
     virtual void setChargeQcEnable(bool enable)
     {
@@ -151,6 +163,12 @@ protected:
         std::lock_guard<std::mutex> lock(_powerMonitorMutex);
         _powerMonitorData = data;
     }
+    void publishPowerMonitorError(const std::string& error)
+    {
+        std::lock_guard<std::mutex> lock(_powerMonitorMutex);
+        _powerMonitorData.valid = false;
+        _powerMonitorData.error = error;
+    }
 public:
 
     /* ----------------------------------- IMU ---------------------------------- */
@@ -161,6 +179,11 @@ public:
         float gyroX  = 0.0f;
         float gyroY  = 0.0f;
         float gyroZ  = 0.0f;
+        bool valid = false;
+        bool hasSample = false;
+        bool simulated = false;
+        uint32_t sampledAtMs = 0;
+        std::string error;
     };
     IMUData_t getImuData()
     {
@@ -169,6 +192,7 @@ public:
     }
     virtual void updateImuData()
     {
+        publishImuError("IMU unavailable");
     }
     virtual void clearImuIrq()
     {
@@ -183,18 +207,45 @@ protected:
         std::lock_guard<std::mutex> lock(_imuMutex);
         _imuData = data;
     }
+    void publishImuError(const std::string& error)
+    {
+        std::lock_guard<std::mutex> lock(_imuMutex);
+        _imuData.valid = false;
+        _imuData.error = error;
+    }
 public:
 
     /* ----------------------------------- RTC ---------------------------------- */
-    virtual void getRtcTime(tm* time)
+    struct RtcData {
+        tm time = {};
+        bool valid = false;
+        bool hasSample = false;
+        bool simulated = false;
+        bool needsInitialization = false;
+        uint32_t sampledAtMs = 0;
+        std::string error = "RTC unavailable";
+    };
+    RtcData getRtcData() const
     {
+        std::lock_guard<std::mutex> lock(_rtcMutex);
+        return _rtcData;
     }
-    virtual void setRtcTime(tm time)
+    virtual void updateRtcData() {} // Worker-only I/O; UI uses getRtcData().
+    virtual bool setRtcTimeChecked(const tm& time, bool initialize = false) { return false; }
+    // Compatibility read is cache-only; compatibility write is worker-only.
+    virtual void getRtcTime(tm* time) { if (time) *time = getRtcData().time; }
+    virtual void setRtcTime(tm time) { setRtcTimeChecked(time); }
+    virtual void clearRtcIrq() {}
+protected:
+    mutable std::mutex _rtcMutex;
+    RtcData _rtcData;
+    std::mutex _rtcIoMutex;
+    void publishRtcData(const RtcData& data)
     {
+        std::lock_guard<std::mutex> lock(_rtcMutex);
+        _rtcData = data;
     }
-    virtual void clearRtcIrq()
-    {
-    }
+public:
 
     /* --------------------------------- Camera --------------------------------- */
     enum class CameraState {
@@ -431,16 +482,68 @@ public:
         std::string name;
         bool isDir;
     };
+    enum class SdScanStatus { Success, MountFailed, ReadFailed, Unavailable };
+    struct SdScanResult {
+        SdScanStatus status = SdScanStatus::Unavailable;
+        std::vector<FileEntry_t> entries;
+        std::string error;
+        bool simulated = false;
+        bool truncated = false;
+    };
+    static constexpr size_t kMaxSdEntries = 256;
     virtual bool isSdCardMounted()
     {
         return false;
     }
+    // Worker-only filesystem transaction. Empty entries are meaningful only on Success.
+    virtual SdScanResult scanSdCardResult(const std::string& dirPath)
+    {
+        (void)dirPath;
+        return {SdScanStatus::Unavailable, {}, "SD card scanning unavailable", false};
+    }
     virtual std::vector<FileEntry_t> scanSdCard(const std::string& dirPath)
     {
-        return {};
+        return scanSdCardResult(dirPath).entries;
     }
 
     /* -------------------------------- Interface ------------------------------- */
+    struct InterfaceData {
+        bool usbC = false;
+        bool usbA = false;
+        bool headphone = false;
+        bool usbCKnown = false;
+        bool usbAKnown = false;
+        bool headphoneKnown = false;
+        bool valid = false;
+        bool hasSample = false;
+        bool simulated = false;
+        uint32_t sampledAtMs = 0;
+        std::string error;
+    };
+    InterfaceData getInterfaceData()
+    {
+        std::lock_guard<std::mutex> lock(_interfaceMutex);
+        return _interfaceData;
+    }
+    // Physical reads belong to a registered background sampler, never rendering.
+    virtual void updateInterfaceData() { publishInterfaceError("Interface status unavailable"); }
+protected:
+    std::mutex _interfaceIoMutex;
+    void publishInterfaceData(const InterfaceData& data)
+    {
+        std::lock_guard<std::mutex> lock(_interfaceMutex);
+        _interfaceData = data;
+    }
+    void publishInterfaceError(const std::string& error)
+    {
+        std::lock_guard<std::mutex> lock(_interfaceMutex);
+        _interfaceData.valid = false;
+        _interfaceData.error = error;
+    }
+private:
+    std::mutex _interfaceMutex;
+    InterfaceData _interfaceData;
+public:
     virtual bool usbCDetect()
     {
         return false;

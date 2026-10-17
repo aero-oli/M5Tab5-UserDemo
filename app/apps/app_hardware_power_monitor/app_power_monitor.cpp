@@ -26,7 +26,7 @@ public:
     AppPowerMonitor()
         : _controller([] { GetHAL()->updatePowerMonitorData(); },
                       [] { return GetHAL()->getPowerMonitorData(); },
-                      [] { return GetHAL()->getCpuTemp(); })
+                      [](int& value) { return GetHAL()->readCpuTemp(value); })
     {
         setAppInfo().name = "Power Monitor";
     }
@@ -111,9 +111,11 @@ private:
         setMetric(_power, "Power", PowerMonitorController::formatPower(sample).c_str());
         setMetric(_cpu, "CPU Temp", PowerMonitorController::formatCpuTemp(sample).c_str());
         if (_detail != nullptr) {
-            char detail[96];
-            std::snprintf(detail, sizeof(detail), "Shunt: %.3f V\nSampling: up to 4 Hz while this app is open", sample.shuntVoltage);
-            lv_label_set_text(_detail, sample.hasSample ? detail : "Waiting for first power sample...");
+            const auto status = PowerMonitorController::statusText(sample, GetHAL()->millis());
+            char shunt[48] = {};
+            if (sample.hasSample) std::snprintf(shunt, sizeof(shunt), "Shunt: %.3f V\n", sample.shuntVoltage);
+            const auto detail = std::string(shunt) + status + (sample.cpuTempValid ? "" : "\nCPU temperature unavailable");
+            lv_label_set_text(_detail, detail.c_str());
         }
     }
 

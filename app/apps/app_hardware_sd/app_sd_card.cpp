@@ -22,8 +22,7 @@ namespace {
 class AppSdCard : public mooncake::AppAbility {
 public:
     AppSdCard()
-        : _controller([] { return GetHAL()->isSdCardMounted(); },
-                      [](const std::string& path) { return GetHAL()->scanSdCard(path); })
+        : _controller([](const std::string& path) { return GetHAL()->scanSdCardResult(path); })
     {
         setAppInfo().name = "SD Card";
     }
@@ -68,7 +67,7 @@ private:
         LvglLockGuard lock;
         const auto layout = makeSdCardLayout();
 
-        auto* description = app_ui::makeLabel(content(), "Scan the mounted SD card root without blocking navigation.",
+        auto* description = app_ui::makeLabel(content(), "Mount and scan the SD card root without blocking navigation.",
                                               layout.description.x, layout.description.y, &lv_font_montserrat_20,
                                               app_ui::theme::color(app_ui::theme::muted));
         lv_obj_set_width(description, layout.description.w);

@@ -60,11 +60,7 @@ public:
                   }
               },
               [] {
-                  InterfaceSnapshot snapshot;
-                  snapshot.usbC = GetHAL()->usbCDetect();
-                  snapshot.usbA = GetHAL()->usbADetect();
-                  snapshot.headphone = GetHAL()->headPhoneDetect();
-                  return snapshot;
+                  return GetHAL()->getInterfaceData();
               })
     {
         setAppInfo().name = "Switches";

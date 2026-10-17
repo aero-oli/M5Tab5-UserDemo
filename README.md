@@ -162,6 +162,17 @@ Emergency Off during a blocked poll, and closing during a queued command. `M5TAB
 the missing-device UI. Smoke journeys also inject a failed off write and verify the warning survives on Home.
 Actual off latency, load behaviour, and failed-communication safety still require Tab5/PPS tests.
 
+RTC, power, IMU, and interface status use cached snapshots with validity and sample age. Failed reads retain the
+last successful values and identify them as unavailable/stale; a checked zero remains a valid measurement. Desktop
+samples are labelled simulated. Home refreshes these snapshots in a worker and never performs I2C reads while drawing.
+RTC offers a confirmed date/time editor for 2000-2099 and verifies the written calendar. Normal setting preserves
+wake configuration. An invalid oscillator/stopped clock requires explicit initialization, which clears wake settings;
+startup never silently clears the invalid-clock flag. Desktop RTC setting does not change the host clock.
+
+SD scanning reports mount/read/cleanup errors separately from an empty directory, unmounts after each scan, and
+limits results to 256 entries with a visible truncation notice. These software checks do not establish physical card,
+RTC backup, sensor accuracy, or board-connection behavior; see [stabilization and acceptance](docs/STABILIZATION.md).
+
 ## Acknowledgments
 
 This project references the following open-source libraries and resources:
