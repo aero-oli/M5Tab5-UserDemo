@@ -51,11 +51,11 @@ public:
 
 private:
     std::unique_ptr<app_ui::AppShell> _shell;
-    lv_obj_t* _loop = nullptr;
-    lv_obj_t* _slow = nullptr;
-    lv_obj_t* _lvgl = nullptr;
-    lv_obj_t* _task = nullptr;
-    lv_obj_t* _detail = nullptr;
+    lv_obj_t* _loop        = nullptr;
+    lv_obj_t* _slow        = nullptr;
+    lv_obj_t* _lvgl        = nullptr;
+    lv_obj_t* _task        = nullptr;
+    lv_obj_t* _detail      = nullptr;
     uint32_t _lastUpdateMs = 0;
 
     lv_obj_t* content() const
@@ -71,17 +71,17 @@ private:
                                               layout.description.x, layout.description.y, &lv_font_montserrat_20,
                                               app_ui::theme::color(app_ui::theme::muted));
         lv_obj_set_width(description, layout.description.w);
-        _loop = makeMetric(layout, 0, "App Loop");
-        _slow = makeMetric(layout, 1, "Slow Updates");
-        _lvgl = makeMetric(layout, 2, "Render");
-        _task = makeMetric(layout, 3, "Background Task");
+        _loop       = makeMetric(layout, 0, "App Loop");
+        _slow       = makeMetric(layout, 1, "Slow Updates");
+        _lvgl       = makeMetric(layout, 2, "Render");
+        _task       = makeMetric(layout, 3, "Background Task");
         auto* panel = app_ui::makePanel(content(), layout.detailPanel.x, layout.detailPanel.y, layout.detailPanel.w,
                                         layout.detailPanel.h);
-        auto* hint = app_ui::makeLabel(
-            panel,
-            "Input timing ends at the flush callback, not physical panel presentation. Lock counters cover HAL callers. Heap and stack are device-only.",
-            layout.detailHint.x, layout.detailHint.y, &lv_font_montserrat_18,
-            app_ui::theme::color(app_ui::theme::muted));
+        auto* hint  = app_ui::makeLabel(panel,
+                                        "Input timing ends at the flush callback, not physical panel presentation. Lock "
+                                         "counters cover HAL callers. Heap and stack are device-only.",
+                                        layout.detailHint.x, layout.detailHint.y, &lv_font_montserrat_18,
+                                        app_ui::theme::color(app_ui::theme::muted));
         lv_obj_set_width(hint, layout.detailHint.w);
         lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
         _detail = app_ui::makeLabel(panel, "", layout.detailText.x, layout.detailText.y, &lv_font_montserrat_18,
@@ -109,18 +109,19 @@ private:
                   perf.backgroundBusy ? (perf.backgroundJob.empty() ? "Busy" : perf.backgroundJob.c_str()) : "Idle");
         if (_detail != nullptr) {
             lv_label_set_text_fmt(_detail,
-                "UI updates: %u   Max: %ums   Renders: %u\n"
-                "Input-to-flush samples: %u   p95: %ums   Max: %ums\n"
-                "HAL lock wait/hold max: %u / %u us\n"
-                "Device heap free/min: %u / %u bytes\n"
-                "Device UI stack headroom: %u bytes   Tasks: %u",
-                static_cast<unsigned>(perf.totalAppUpdates), static_cast<unsigned>(perf.maxAppUpdateMs),
-                static_cast<unsigned>(perf.renderedFrames), static_cast<unsigned>(perf.inputSamples),
-                static_cast<unsigned>(perf.p95InputToFlushUs / 1000),
-                static_cast<unsigned>(perf.maxInputToFlushUs / 1000),
-                static_cast<unsigned>(perf.maxLockWaitUs), static_cast<unsigned>(perf.maxLockHoldUs),
-                static_cast<unsigned>(perf.freeHeap), static_cast<unsigned>(perf.minimumHeap),
-                static_cast<unsigned>(perf.uiStackHeadroom), static_cast<unsigned>(perf.taskCount));
+                                  "UI updates: %u   Max: %ums   Renders: %u\n"
+                                  "Input-to-flush samples: %u   p95: %ums   Max: %ums\n"
+                                  "HAL lock wait/hold max: %u / %u us\n"
+                                  "Device heap free/min: %u / %u bytes\n"
+                                  "Device UI stack headroom: %u bytes   Tasks: %u",
+                                  static_cast<unsigned>(perf.totalAppUpdates),
+                                  static_cast<unsigned>(perf.maxAppUpdateMs),
+                                  static_cast<unsigned>(perf.renderedFrames), static_cast<unsigned>(perf.inputSamples),
+                                  static_cast<unsigned>(perf.p95InputToFlushUs / 1000),
+                                  static_cast<unsigned>(perf.maxInputToFlushUs / 1000),
+                                  static_cast<unsigned>(perf.maxLockWaitUs), static_cast<unsigned>(perf.maxLockHoldUs),
+                                  static_cast<unsigned>(perf.freeHeap), static_cast<unsigned>(perf.minimumHeap),
+                                  static_cast<unsigned>(perf.uiStackHeadroom), static_cast<unsigned>(perf.taskCount));
         }
     }
 

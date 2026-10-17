@@ -10,7 +10,10 @@
 
 using namespace app_hardware_com_monitor;
 
-ComMonitorController::ComMonitorController(DataFn dataFn, SendFn sendFn) : _dataFn(std::move(dataFn)), _sendFn(std::move(sendFn)) {}
+ComMonitorController::ComMonitorController(DataFn dataFn, SendFn sendFn)
+    : _dataFn(std::move(dataFn)), _sendFn(std::move(sendFn))
+{
+}
 
 ComMonitorSample ComMonitorController::drainRx(size_t maxBytes)
 {
@@ -22,8 +25,8 @@ ComMonitorSample ComMonitorController::drainRx(size_t maxBytes)
     {
         std::lock_guard<std::mutex> lock(data.mutex);
         sample.simulated = data.simulated;
-        sample.error = data.error;
-        sample.dropped = data.rxDropped;
+        sample.error     = data.error;
+        sample.dropped   = data.rxDropped;
         while (!data.rxQueue.empty() && sample.text.size() < std::min(maxBytes, hal::UartMonitorState::kCapacity)) {
             sample.text.push_back(static_cast<char>(data.rxQueue.front()));
             data.rxQueue.pop();

@@ -54,7 +54,7 @@ struct AppStatus {
     StatusLevel level = StatusLevel::Neutral;
 };
 
-using AppFactory = std::function<std::unique_ptr<mooncake::AppAbility>()>;
+using AppFactory     = std::function<std::unique_ptr<mooncake::AppAbility>()>;
 using StatusProvider = std::function<AppStatus()>;
 
 struct RegisteredApp {
@@ -64,13 +64,13 @@ struct RegisteredApp {
     std::string description;
     std::string defaultStatus;
     std::string icon;
-    int order = 0;
-    int summaryPriority = 0;
-    bool dangerous = false;
+    int order             = 0;
+    int summaryPriority   = 0;
+    bool dangerous        = false;
     bool dashboardVisible = true;
     AppFactory factory;
     StatusProvider statusProvider;
-    int appId = -1;
+    int appId    = -1;
     bool visible = true;
 };
 

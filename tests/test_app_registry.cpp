@@ -17,30 +17,16 @@ static void test_registry_installs_and_orders_apps()
 {
     app_registry::AppRegistry registry;
 
-    registry.add({app_registry::AppKey::Rtc,
-                  app_registry::AppCategory::Hardware,
-                  "RTC",
-                  "Clock and date",
-                  "12:00",
-                  "RT",
-                  20,
-                  80,
-                  false,
-                  true,
-                  [] { return std::make_unique<RegistryTestApp>("RTC"); },
-                  [] { return app_registry::AppStatus{"12:34", app_registry::StatusLevel::Ok}; }});
-    registry.add({app_registry::AppKey::PowerMonitor,
-                  app_registry::AppCategory::Hardware,
-                  "Power",
-                  "Battery and input",
-                  "7.9V",
-                  "PW",
-                  10,
-                  100,
-                  false,
-                  true,
-                  [] { return std::make_unique<RegistryTestApp>("Power"); },
-                  [] { return app_registry::AppStatus{"8.0V", app_registry::StatusLevel::Ok}; }});
+    registry.add({app_registry::AppKey::Rtc, app_registry::AppCategory::Hardware, "RTC", "Clock and date", "12:00",
+                  "RT", 20, 80, false, true, [] { return std::make_unique<RegistryTestApp>("RTC"); },
+                  [] {
+                      return app_registry::AppStatus{"12:34", app_registry::StatusLevel::Ok};
+                  }});
+    registry.add({app_registry::AppKey::PowerMonitor, app_registry::AppCategory::Hardware, "Power", "Battery and input",
+                  "7.9V", "PW", 10, 100, false, true, [] { return std::make_unique<RegistryTestApp>("Power"); },
+                  [] {
+                      return app_registry::AppStatus{"8.0V", app_registry::StatusLevel::Ok};
+                  }});
 
     registry.installAll();
 
@@ -74,39 +60,12 @@ static void test_registry_open_rejects_missing_key()
 static void test_dashboard_apps_are_filtered_and_priority_sorted()
 {
     app_registry::AppRegistry registry;
-    registry.add({app_registry::AppKey::Music,
-                  app_registry::AppCategory::Media,
-                  "Music",
-                  "Playback",
-                  "Idle",
-                  "MU",
-                  10,
-                  5,
-                  false,
-                  false,
-                  [] { return std::make_unique<RegistryTestApp>("Music"); }});
-    registry.add({app_registry::AppKey::Pps,
-                  app_registry::AppCategory::Modules,
-                  "PPS",
-                  "Supply",
-                  "0x35",
-                  "PS",
-                  10,
-                  100,
-                  false,
-                  true,
-                  [] { return std::make_unique<RegistryTestApp>("PPS"); }});
-    registry.add({app_registry::AppKey::PowerMonitor,
-                  app_registry::AppCategory::Hardware,
-                  "Power",
-                  "Power data",
-                  "8V",
-                  "PW",
-                  10,
-                  120,
-                  false,
-                  true,
-                  [] { return std::make_unique<RegistryTestApp>("Power"); }});
+    registry.add({app_registry::AppKey::Music, app_registry::AppCategory::Media, "Music", "Playback", "Idle", "MU", 10,
+                  5, false, false, [] { return std::make_unique<RegistryTestApp>("Music"); }});
+    registry.add({app_registry::AppKey::Pps, app_registry::AppCategory::Modules, "PPS", "Supply", "0x35", "PS", 10, 100,
+                  false, true, [] { return std::make_unique<RegistryTestApp>("PPS"); }});
+    registry.add({app_registry::AppKey::PowerMonitor, app_registry::AppCategory::Hardware, "Power", "Power data", "8V",
+                  "PW", 10, 120, false, true, [] { return std::make_unique<RegistryTestApp>("Power"); }});
 
     auto dashboard = registry.dashboardApps();
     assert(dashboard.size() == 2);

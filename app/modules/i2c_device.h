@@ -12,10 +12,10 @@ namespace modules {
 
 class I2cDevice {
 public:
-    virtual ~I2cDevice() = default;
-    virtual bool probe() = 0;
-    virtual uint8_t address() const = 0;
-    virtual bool readRegister(uint8_t reg, uint8_t* buffer, size_t length) = 0;
+    virtual ~I2cDevice()                                                        = default;
+    virtual bool probe()                                                        = 0;
+    virtual uint8_t address() const                                             = 0;
+    virtual bool readRegister(uint8_t reg, uint8_t* buffer, size_t length)      = 0;
     virtual bool writeRegister(uint8_t reg, const uint8_t* data, size_t length) = 0;
 };
 

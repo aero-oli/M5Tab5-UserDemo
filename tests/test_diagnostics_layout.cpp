@@ -29,7 +29,7 @@ static void test_diagnostics_metric_grid_spacing_is_stable()
 
     for (int i = 1; i < app_diagnostics::kDiagnosticsMetricCount; ++i) {
         const auto previous = app_diagnostics::diagnosticsMetricRect(layout, i - 1);
-        const auto current = app_diagnostics::diagnosticsMetricRect(layout, i);
+        const auto current  = app_diagnostics::diagnosticsMetricRect(layout, i);
         assert(previous.x + previous.w + layout.colGap <= current.x);
     }
 }

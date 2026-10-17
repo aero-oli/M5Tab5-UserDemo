@@ -9,13 +9,13 @@ static bool overlaps(const app_ui::Rect& a, const app_ui::Rect& b)
 
 static void verifyLayout(int pinCount)
 {
-    const auto layout = app_hardware_gpio::makeGpioLayout(pinCount);
+    const auto layout                     = app_hardware_gpio::makeGpioLayout(pinCount);
     const std::vector<app_ui::Rect> fixed = {layout.statusText, layout.errorText, layout.releaseAll, layout.grid};
     for (size_t i = 0; i < fixed.size(); ++i) {
         assert(app_ui::containsLocal(layout.content, fixed[i]));
         for (size_t j = i + 1; j < fixed.size(); ++j) assert(!overlaps(fixed[i], fixed[j]));
     }
-    const app_ui::Rect inner = {0, 0, layout.cardW - 34, layout.cardH - 34};
+    const app_ui::Rect inner                 = {0, 0, layout.cardW - 34, layout.cardH - 34};
     const std::vector<app_ui::Rect> children = {layout.title, layout.role, layout.state, layout.toggle, layout.action};
     for (size_t i = 0; i < children.size(); ++i) {
         assert(app_ui::containsLocal(inner, children[i]));
@@ -30,8 +30,10 @@ static void verifyLayout(int pinCount)
         for (const auto& previous : cards) assert(!overlaps(card, previous));
         cards.push_back(card);
     }
-    if (cards.empty()) assert(layout.scrollContentHeight == 0);
-    else assert(layout.scrollContentHeight == cards.back().y + layout.cardH + 24);
+    if (cards.empty())
+        assert(layout.scrollContentHeight == 0);
+    else
+        assert(layout.scrollContentHeight == cards.back().y + layout.cardH + 24);
     if (pinCount == 24) assert(layout.scrollContentHeight > layout.grid.h);
 }
 

@@ -20,10 +20,10 @@ enum class SwitchId {
 };
 
 struct SwitchSnapshot {
-    bool charge = false;
-    bool chargeQc = false;
-    bool ext5v = false;
-    bool usbA5v = false;
+    bool charge     = false;
+    bool chargeQc   = false;
+    bool ext5v      = false;
+    bool usbA5v     = false;
     bool extAntenna = false;
 };
 
@@ -31,8 +31,8 @@ using InterfaceSnapshot = hal::HalBase::InterfaceData;
 
 class SwitchesController {
 public:
-    using ReadSwitchesFn = std::function<SwitchSnapshot()>;
-    using SetSwitchFn = std::function<void(SwitchId id, bool enabled)>;
+    using ReadSwitchesFn  = std::function<SwitchSnapshot()>;
+    using SetSwitchFn     = std::function<void(SwitchId id, bool enabled)>;
     using ReadInterfaceFn = std::function<InterfaceSnapshot()>;
 
     SwitchesController(ReadSwitchesFn readSwitchesFn, SetSwitchFn setSwitchFn, ReadInterfaceFn readInterfaceFn);

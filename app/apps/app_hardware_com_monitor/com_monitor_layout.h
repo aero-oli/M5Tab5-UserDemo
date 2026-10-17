@@ -28,13 +28,13 @@ inline app_ui::Rect comMonitorContentRect()
 inline ComMonitorLayout makeComMonitorLayout()
 {
     ComMonitorLayout layout;
-    layout.content = comMonitorContentRect();
+    layout.content     = comMonitorContentRect();
     layout.description = {0, 0, layout.content.w, 32};
-    layout.logPanel = {0, 72, 980, 420};
-    layout.logTitle = {0, 0, layout.logPanel.w - 32, 30};
-    layout.logText = {0, 48, layout.logPanel.w - 32, layout.logPanel.h - 76};
-    layout.sendButton = {0, layout.logPanel.y + layout.logPanel.h + layout.sectionGap, 260, 58};
-    layout.statusText = {layout.sendButton.x + layout.sendButton.w + 24, layout.sendButton.y + 12, 800, 32};
+    layout.logPanel    = {0, 72, 980, 420};
+    layout.logTitle    = {0, 0, layout.logPanel.w - 32, 30};
+    layout.logText     = {0, 48, layout.logPanel.w - 32, layout.logPanel.h - 76};
+    layout.sendButton  = {0, layout.logPanel.y + layout.logPanel.h + layout.sectionGap, 260, 58};
+    layout.statusText  = {layout.sendButton.x + layout.sendButton.w + 24, layout.sendButton.y + 12, 800, 32};
     return layout;
 }
 

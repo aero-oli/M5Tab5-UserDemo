@@ -34,7 +34,7 @@ Do not describe a desktop simulator pass as electrical, DMA, wake, radio or OTA 
 | 4 | Truthful RTC/SD/sensor results, restore RTC setting, fresh Home status | Software gate passed: 65/65 desktop tests; RTC fault journeys; Tab5 build |
 | 5 | Wi-Fi restoration/recovery; verified HTTPS OTA, progress, cancellation, confirmation and recovery | Software gate passed: 72/72 desktop tests; OTA fault/cancel journeys; Tab5 build |
 | 6 | Focused Home, exact PPS entry, populated logs/files/networks, keyboard/error/busy journeys | Software gate passed: 75 desktop checks (guard rename rerun); populated render/pointer journeys; Tab5 build |
-| 7 | Build/test CI, separate smoke harness, extension contracts, device acceptance and release procedure | Software gate passed: fresh build, 76/76 tests, no-op rebuild, Tab5 build; hosted CI/device gates pending |
+| 7 | Build/test CI, separate smoke harness, extension contracts, device acceptance and release procedure | Software gate passed: fresh build, 76/76 tests, no-op rebuild, Tab5 build; hosted CI tracked in fork PR; device gates pending |
 
 Feature parity checklist: launcher/categories; Network scan/select/connect/disconnect/forget/AP;
 Updates install/cancel/reboot; brightness/volume; screen/motion/timed sleep/power-off;
@@ -190,8 +190,8 @@ checks, and a subsequent unchanged build reporting `ninja: no work to do`. The s
 preset was also built. The firmware size check reports 15% free in the 4 MiB app slot and 5% free
 in the configured bootloader region; future changes must keep both size checks passing. ESP-IDF v5.4.2 compiled the final app, bootloader and partition artifacts.
 Eleven temporary-Git fetch cases run inside `fetch_repos_tests`; existing dependency pins verified
-without network access. Workflow YAML and JSON configuration syntax were checked. The hosted
-workflow has not been dispatched, and Linux/container execution remains a CI gate.
+without network access. Workflow YAML and JSON configuration syntax were checked. At this initial local gate the hosted workflow had not yet been dispatched. Publication and
+hosted Linux/container results are recorded in the follow-up below.
 
 Desktop CMake no longer overwrites `CMAKE_BINARY_DIR`; binaries belong to the selected build tree.
 VS Code run/debug uses `build/vscode-desktop/app_desktop_build`. Unused dependency demos/examples
@@ -214,7 +214,8 @@ Publication and hosted CI follow-up are recorded below.
 ## Publication and CI follow-up
 
 The stabilization branch is published on `aero-oli/M5Tab5-UserDemo` with
-[upstream PR #19](https://github.com/m5stack/M5Tab5-UserDemo/pull/19). Current upstream main
+[fork PR #1](https://github.com/aero-oli/M5Tab5-UserDemo/pull/1). The upstream PR was closed at
+the user's request; changes are being applied to the fork only. Current upstream main
 (`b4e356b`) was merged without restoring retired launcher panels. ST7121 display support and
 LCD reset pin handling are retained. The C6 duplicate-AP-event fix is adapted to the synchronized
 network owner, including checked startup and stop-before-publication handling. Focused synthetic
@@ -228,3 +229,7 @@ simulations; controller/driver tests remain parallelizable. Current hosted resul
 [the fork's build workflow](https://github.com/aero-oli/M5Tab5-UserDemo/actions/workflows/build.yml).
 
 Hardware testing remains deferred until the user connects the Tab5. No firmware has been flashed.
+
+The inherited formatting workflow uses a hosted Ubuntu runner in the fork. All PR source files in
+its existing scope were checked with clang-format 13; formatting corrections preserve the same
+check and exclusions. Hardware testing remains deferred until the Tab5 is connected.

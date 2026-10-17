@@ -9,7 +9,9 @@
 
 using namespace app_settings_network;
 
-NetworkController::NetworkController(NetworkCallbacks callbacks) : _callbacks(std::move(callbacks)) {}
+NetworkController::NetworkController(NetworkCallbacks callbacks) : _callbacks(std::move(callbacks))
+{
+}
 
 NetworkSnapshot NetworkController::refresh()
 {
@@ -17,14 +19,17 @@ NetworkSnapshot NetworkController::refresh()
     if (_callbacks.status) {
         _snapshot.status = _callbacks.status();
     }
-    _snapshot.busy = _job != nullptr;
+    _snapshot.busy         = _job != nullptr;
     _snapshot.updateActive = updateActive();
     return _snapshot;
 }
 
 bool NetworkController::scan()
 {
-    if (updateActive()) { _snapshot.detail = "Firmware update owns Wi-Fi."; return false; }
+    if (updateActive()) {
+        _snapshot.detail = "Firmware update owns Wi-Fi.";
+        return false;
+    }
     if (!_callbacks.scan) {
         _snapshot.detail = "Wi-Fi scan is unavailable.";
         return false;
@@ -39,14 +44,14 @@ bool NetworkController::scan()
     }
 
     auto scanFn = _callbacks.scan;
-    auto state = std::make_shared<JobState>();
-    auto job = [state, scanFn] {
+    auto state  = std::make_shared<JobState>();
+    auto job    = [state, scanFn] {
         auto networks = scanFn();
         std::lock_guard<std::mutex> lock(state->mutex);
         state->hasNetworks = true;
-        state->networks = std::move(networks);
-        state->detail = scanDetail(state->networks.size());
-        state->complete = true;
+        state->networks    = std::move(networks);
+        state->detail      = scanDetail(state->networks.size());
+        state->complete    = true;
     };
 
     if (!_callbacks.startJob("Wi-Fi scan", std::move(job))) {
@@ -54,9 +59,9 @@ bool NetworkController::scan()
         return false;
     }
 
-    _job = state;
+    _job             = state;
     _snapshot.detail = "Scanning for Wi-Fi networks...";
-    _snapshot.busy = true;
+    _snapshot.busy   = true;
     return true;
 }
 
@@ -120,9 +125,8 @@ bool NetworkController::startAccessPoint()
         return false;
     }
     auto startFn = _callbacks.startAp;
-    return startCommand("Wi-Fi AP start", "Starting access point...", [startFn] {
-        return startFn() ? "Access point started." : "Access point start failed.";
-    });
+    return startCommand("Wi-Fi AP start", "Starting access point...",
+                        [startFn] { return startFn() ? "Access point started." : "Access point start failed."; });
 }
 
 bool NetworkController::stopAccessPoint()
@@ -138,9 +142,13 @@ bool NetworkController::stopAccessPoint()
     });
 }
 
-bool NetworkController::startCommand(const std::string& jobName, const std::string& pendingDetail, std::function<std::string()> work)
+bool NetworkController::startCommand(const std::string& jobName, const std::string& pendingDetail,
+                                     std::function<std::string()> work)
 {
-    if (updateActive()) { _snapshot.detail = "Firmware update owns Wi-Fi."; return false; }
+    if (updateActive()) {
+        _snapshot.detail = "Firmware update owns Wi-Fi.";
+        return false;
+    }
     if (!_callbacks.startJob) {
         _snapshot.detail = "Background jobs are unavailable.";
         return false;
@@ -151,7 +159,7 @@ bool NetworkController::startCommand(const std::string& jobName, const std::stri
     }
 
     auto state = std::make_shared<JobState>();
-    auto job = [state, work = std::move(work)] {
+    auto job   = [state, work = std::move(work)] {
         std::string detail = work();
         std::lock_guard<std::mutex> lock(state->mutex);
         if (!detail.empty()) {
@@ -165,9 +173,9 @@ bool NetworkController::startCommand(const std::string& jobName, const std::stri
         return false;
     }
 
-    _job = state;
+    _job             = state;
     _snapshot.detail = pendingDetail;
-    _snapshot.busy = true;
+    _snapshot.busy   = true;
     return true;
 }
 
@@ -179,7 +187,7 @@ void NetworkController::finishCompletedJob()
 
     std::vector<hal::HalBase::WifiNetwork> networks;
     std::string detail;
-    bool complete = false;
+    bool complete    = false;
     bool hasNetworks = false;
     {
         std::lock_guard<std::mutex> lock(_job->mutex);
@@ -188,8 +196,8 @@ void NetworkController::finishCompletedJob()
             return;
         }
         hasNetworks = _job->hasNetworks;
-        networks = _job->networks;
-        detail = _job->detail;
+        networks    = _job->networks;
+        detail      = _job->detail;
     }
 
     if (hasNetworks) {
@@ -216,7 +224,8 @@ std::string NetworkController::scanDetail(size_t count)
 bool NetworkController::updateActive() const
 {
     if (!_callbacks.otaStatus) return false;
-    using State = hal::HalBase::OtaState;
+    using State      = hal::HalBase::OtaState;
     const auto state = _callbacks.otaStatus().state;
-    return state == State::Checking || state == State::Downloading || state == State::Installing || state == State::Cancelling;
+    return state == State::Checking || state == State::Downloading || state == State::Installing ||
+           state == State::Cancelling;
 }

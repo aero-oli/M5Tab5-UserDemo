@@ -14,7 +14,6 @@ inline bool appendSdEntry(HalBase::SdScanResult& result, HalBase::FileEntry_t en
     return true;
 }
 
-
 // One scan owns a temporary mount. A failed directory read still unmounts it;
 // empty success is distinct from every failure path. Call only from a worker.
 template <typename Mount, typename Read, typename Unmount>

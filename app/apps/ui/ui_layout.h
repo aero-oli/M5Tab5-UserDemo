@@ -59,7 +59,7 @@ inline std::vector<Rect> makeColumns(const Rect& area, const std::vector<int>& w
         return rects;
     }
 
-    int fixedWidth = 0;
+    int fixedWidth    = 0;
     int flexibleIndex = -1;
     for (size_t i = 0; i < widths.size(); ++i) {
         if (widths[i] <= 0) {
@@ -73,7 +73,7 @@ inline std::vector<Rect> makeColumns(const Rect& area, const std::vector<int>& w
     }
 
     const int totalGap = gap * static_cast<int>(widths.size() - 1);
-    int flexibleWidth = 0;
+    int flexibleWidth  = 0;
     if (flexibleIndex >= 0) {
         flexibleWidth = area.w - fixedWidth - totalGap;
         if (flexibleWidth <= 0) {

@@ -102,7 +102,8 @@ public:
     std::vector<uint8_t> i2cScan(bool isInternal) override;
     bool i2cProbe(hal::ModuleBus bus, uint8_t address) override;
     bool i2cReadRegister(hal::ModuleBus bus, uint8_t address, uint8_t reg, uint8_t* buffer, size_t length) override;
-    bool i2cWriteRegister(hal::ModuleBus bus, uint8_t address, uint8_t reg, const uint8_t* data, size_t length) override;
+    bool i2cWriteRegister(hal::ModuleBus bus, uint8_t address, uint8_t reg, const uint8_t* data,
+                          size_t length) override;
 
     bool uartMonitorSend(std::string msg, bool newLine = true) override;
 
@@ -111,7 +112,7 @@ private:
     std::atomic<bool> _displayAsleep{false};
     uint8_t _wakeBrightness = 100;
     std::mutex _gpioMutex;
-    std::array<hal::GpioOutputState, 55> _gpioOutputs {};
+    std::array<hal::GpioOutputState, 55> _gpioOutputs{};
     uint8_t _current_lcd_brightness = 100;
     uint8_t _current_speaker_volume = 20;
     bool _charge_qc_enable          = false;
@@ -120,15 +121,15 @@ private:
     bool _usba_5v_enable            = true;
     std::mutex _cameraMutex;
     CameraStatus _cameraStatus{CameraState::Stopped};
-    lv_obj_t* _cameraCanvas = nullptr;
+    lv_obj_t* _cameraCanvas  = nullptr;
     lv_timer_t* _cameraTimer = nullptr;
     std::vector<uint16_t> _cameraBuffers[2];
     uint32_t _cameraStartedMs = 0;
-    int _cameraNextBuffer = 0;
+    int _cameraNextBuffer     = 0;
 
     tm _rtcSimulatedTime{};
     uint32_t _rtcSimulatedAtMs = 0;
-    bool _rtcSimulatedSet = false;
+    bool _rtcSimulatedSet      = false;
     void updateCameraFrame();
     void detachCamera();
 

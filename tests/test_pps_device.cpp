@@ -12,7 +12,9 @@
 
 class FakeI2cDevice : public modules::I2cDevice {
 public:
-    explicit FakeI2cDevice(bool present = true) : _present(present) {}
+    explicit FakeI2cDevice(bool present = true) : _present(present)
+    {
+    }
 
     bool probe() override
     {

@@ -31,14 +31,16 @@ void AudioToolController::stop()
 AudioToolSample AudioToolController::sample() const
 {
     AudioToolSample result;
-    result.detail = "Ready.";
+    result.detail        = "Ready.";
     auto headphoneDetail = [&]() -> std::string {
         if (_kind != AudioToolKind::Headphone) return "Ready.";
         if (_callbacks.interfaceStatus) {
             const auto data = _callbacks.interfaceStatus();
             if (!data.valid || !data.hasSample || !data.headphoneKnown)
-                return data.error.empty() ? "Headphone status unavailable." : "Headphone status unavailable: " + data.error;
-            const auto detail = data.headphone ? "Headset detected." : "No headset detected. The test can still be started.";
+                return data.error.empty() ? "Headphone status unavailable."
+                                          : "Headphone status unavailable: " + data.error;
+            const auto detail =
+                data.headphone ? "Headset detected." : "No headset detected. The test can still be started.";
             return data.simulated ? std::string("Simulated: ") + detail : detail;
         }
         if (_callbacks.headphoneDetected && !_callbacks.headphoneDetected())
@@ -47,20 +49,36 @@ AudioToolSample AudioToolController::sample() const
     };
     if (_callbacks.status) {
         const auto status = _callbacks.status();
-        result.busy = status.busy;
-        using Phase = hal::HalBase::AudioPhase;
+        result.busy       = status.busy;
+        using Phase       = hal::HalBase::AudioPhase;
         switch (status.phase) {
-            case Phase::Starting: result.state = "Starting"; break;
-            case Phase::Recording: result.state = "Recording"; break;
-            case Phase::Playing: result.state = "Playing"; break;
-            case Phase::Cancelling: result.state = "Stopping"; break;
-            case Phase::Failed: result.state = "Failed"; break;
-            case Phase::Idle: result.state = "Idle"; break;
+            case Phase::Starting:
+                result.state = "Starting";
+                break;
+            case Phase::Recording:
+                result.state = "Recording";
+                break;
+            case Phase::Playing:
+                result.state = "Playing";
+                break;
+            case Phase::Cancelling:
+                result.state = "Stopping";
+                break;
+            case Phase::Failed:
+                result.state = "Failed";
+                break;
+            case Phase::Idle:
+                result.state = "Idle";
+                break;
         }
-        if (!status.lastError.empty()) result.detail = status.lastError;
-        else if (status.phase == Phase::Cancelling) result.detail = "Stopping audio...";
-        else if (status.busy) result.detail = "Audio codec in use.";
-        else result.detail = headphoneDetail();
+        if (!status.lastError.empty())
+            result.detail = status.lastError;
+        else if (status.phase == Phase::Cancelling)
+            result.detail = "Stopping audio...";
+        else if (status.busy)
+            result.detail = "Audio codec in use.";
+        else
+            result.detail = headphoneDetail();
         return result;
     }
     if (_kind == AudioToolKind::Music) {
@@ -68,7 +86,7 @@ AudioToolSample AudioToolController::sample() const
         return result;
     }
 
-    result.state = micStateLabel(_callbacks.micState ? _callbacks.micState() : hal::HalBase::MIC_TEST_IDLE);
+    result.state  = micStateLabel(_callbacks.micState ? _callbacks.micState() : hal::HalBase::MIC_TEST_IDLE);
     result.detail = headphoneDetail();
     return result;
 }

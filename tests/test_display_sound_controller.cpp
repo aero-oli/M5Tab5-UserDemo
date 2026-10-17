@@ -13,11 +13,9 @@ struct SetCall {
 
 void test_reads_current_settings()
 {
-    app_settings_display_sound::DisplaySoundController controller(
-        [] { return static_cast<uint8_t>(70); },
-        [] { return static_cast<uint8_t>(30); },
-        [](uint8_t) {},
-        [](uint8_t) {});
+    app_settings_display_sound::DisplaySoundController controller([] { return static_cast<uint8_t>(70); },
+                                                                  [] { return static_cast<uint8_t>(30); },
+                                                                  [](uint8_t) {}, [](uint8_t) {});
 
     const auto snapshot = controller.read();
 
@@ -30,8 +28,7 @@ void test_adjusts_brightness_in_steps_and_clamps()
     uint8_t brightness = 95;
     std::vector<SetCall> calls;
     app_settings_display_sound::DisplaySoundController controller(
-        [&] { return brightness; },
-        [] { return static_cast<uint8_t>(50); },
+        [&] { return brightness; }, [] { return static_cast<uint8_t>(50); },
         [&](uint8_t value) {
             brightness = value;
             calls.push_back({app_settings_display_sound::SettingId::Brightness, value});
@@ -44,7 +41,7 @@ void test_adjusts_brightness_in_steps_and_clamps()
     assert(calls[0].value == 100);
     assert(calls[1].value == 5);
     assert(controller.adjustBrightness(-10) == 5);
-    brightness = 0; // A prior explicit sleep must not make ordinary adjustment stay dark.
+    brightness = 0;  // A prior explicit sleep must not make ordinary adjustment stay dark.
     assert(controller.adjustBrightness(-10) == 5);
 }
 
@@ -53,9 +50,7 @@ void test_adjusts_volume_in_steps_and_clamps()
     uint8_t volume = 5;
     std::vector<SetCall> calls;
     app_settings_display_sound::DisplaySoundController controller(
-        [] { return static_cast<uint8_t>(50); },
-        [&] { return volume; },
-        [](uint8_t) {},
+        [] { return static_cast<uint8_t>(50); }, [&] { return volume; }, [](uint8_t) {},
         [&](uint8_t value) {
             volume = value;
             calls.push_back({app_settings_display_sound::SettingId::Volume, value});

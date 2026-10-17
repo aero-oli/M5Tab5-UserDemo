@@ -9,8 +9,10 @@
 
 using namespace app_hardware_switches;
 
-SwitchesController::SwitchesController(ReadSwitchesFn readSwitchesFn, SetSwitchFn setSwitchFn, ReadInterfaceFn readInterfaceFn)
-    : _readSwitchesFn(std::move(readSwitchesFn)), _setSwitchFn(std::move(setSwitchFn)),
+SwitchesController::SwitchesController(ReadSwitchesFn readSwitchesFn, SetSwitchFn setSwitchFn,
+                                       ReadInterfaceFn readInterfaceFn)
+    : _readSwitchesFn(std::move(readSwitchesFn)),
+      _setSwitchFn(std::move(setSwitchFn)),
       _readInterfaceFn(std::move(readInterfaceFn))
 {
 }
@@ -33,14 +35,13 @@ InterfaceSnapshot SwitchesController::readInterface() const
 std::string SwitchesController::formatInterfaceStatus(const InterfaceSnapshot& snapshot)
 {
     const bool available = snapshot.valid && snapshot.hasSample;
-    const auto label = [available](bool known, bool connected) {
+    const auto label     = [available](bool known, bool connected) {
         return !available || !known ? "unknown" : connected ? "connected" : "off";
     };
     char buffer[160];
     std::snprintf(buffer, sizeof(buffer), "%sUSB-C: %s    USB-A: %s    Headphone: %s%s",
-                  snapshot.simulated ? "Simulated: " : "",
-                  label(snapshot.usbCKnown, snapshot.usbC), label(snapshot.usbAKnown, snapshot.usbA),
-                  label(snapshot.headphoneKnown, snapshot.headphone),
+                  snapshot.simulated ? "Simulated: " : "", label(snapshot.usbCKnown, snapshot.usbC),
+                  label(snapshot.usbAKnown, snapshot.usbA), label(snapshot.headphoneKnown, snapshot.headphone),
                   !snapshot.valid && snapshot.hasSample ? " (stale)" : "");
     return buffer;
 }

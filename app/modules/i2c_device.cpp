@@ -7,7 +7,9 @@
 
 using namespace modules;
 
-HalI2cDevice::HalI2cDevice(hal::ModuleBus bus, uint8_t address) : _bus(bus), _address(address) {}
+HalI2cDevice::HalI2cDevice(hal::ModuleBus bus, uint8_t address) : _bus(bus), _address(address)
+{
+}
 
 bool HalI2cDevice::probe()
 {

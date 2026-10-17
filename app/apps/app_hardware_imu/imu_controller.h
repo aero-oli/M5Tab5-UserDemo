@@ -19,7 +19,7 @@ struct ImuSample : hal::HalBase::IMUData_t {
 class ImuController {
 public:
     using UpdateFn = std::function<void()>;
-    using DataFn = std::function<hal::HalBase::IMUData_t()>;
+    using DataFn   = std::function<hal::HalBase::IMUData_t()>;
 
     ImuController(UpdateFn updateFn, DataFn dataFn);
 

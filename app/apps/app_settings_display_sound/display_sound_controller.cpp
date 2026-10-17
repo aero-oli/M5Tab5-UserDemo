@@ -12,8 +12,10 @@ using namespace app_settings_display_sound;
 
 DisplaySoundController::DisplaySoundController(ReadFn readBrightnessFn, ReadFn readVolumeFn, WriteFn writeBrightnessFn,
                                                WriteFn writeVolumeFn)
-    : _readBrightnessFn(std::move(readBrightnessFn)), _readVolumeFn(std::move(readVolumeFn)),
-      _writeBrightnessFn(std::move(writeBrightnessFn)), _writeVolumeFn(std::move(writeVolumeFn))
+    : _readBrightnessFn(std::move(readBrightnessFn)),
+      _readVolumeFn(std::move(readVolumeFn)),
+      _writeBrightnessFn(std::move(writeBrightnessFn)),
+      _writeVolumeFn(std::move(writeVolumeFn))
 {
 }
 
@@ -21,7 +23,7 @@ DisplaySoundSnapshot DisplaySoundController::read() const
 {
     DisplaySoundSnapshot snapshot;
     snapshot.brightness = _readBrightnessFn();
-    snapshot.volume = _readVolumeFn();
+    snapshot.volume     = _readVolumeFn();
     return snapshot;
 }
 

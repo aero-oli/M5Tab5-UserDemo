@@ -15,7 +15,7 @@ int main()
     app_hardware_com_monitor::ComMonitorController controller(
         [&]() -> hal::HalBase::UartMonitorData_t& { return data; },
         [&](const std::string& msg, bool newLine) {
-            sent = msg;
+            sent        = msg;
             sentNewline = newLine;
             return true;
         });

@@ -14,18 +14,18 @@ namespace pps {
 static constexpr uint8_t DEFAULT_I2C_ADDRESS = 0x35;
 static constexpr uint16_t EXPECTED_MODULE_ID = 0x1041;
 
-static constexpr uint8_t REG_MODULE_ID_L     = 0x00;
-static constexpr uint8_t REG_MODULE_ENABLE   = 0x04;
-static constexpr uint8_t REG_RUNNING_MODE    = 0x05;
-static constexpr uint8_t REG_DATA_FLAG       = 0x07;
-static constexpr uint8_t REG_VOUT_READBACK   = 0x08;
-static constexpr uint8_t REG_IOUT_READBACK   = 0x0C;
-static constexpr uint8_t REG_TEMP_READBACK   = 0x10;
-static constexpr uint8_t REG_VIN_READBACK    = 0x14;
-static constexpr uint8_t REG_VOUT_SET        = 0x18;
-static constexpr uint8_t REG_IOUT_SET        = 0x1C;
-static constexpr uint8_t REG_UID_W0          = 0x52;
-static constexpr uint8_t REG_I2C_ADDRESS     = 0x5F;
+static constexpr uint8_t REG_MODULE_ID_L   = 0x00;
+static constexpr uint8_t REG_MODULE_ENABLE = 0x04;
+static constexpr uint8_t REG_RUNNING_MODE  = 0x05;
+static constexpr uint8_t REG_DATA_FLAG     = 0x07;
+static constexpr uint8_t REG_VOUT_READBACK = 0x08;
+static constexpr uint8_t REG_IOUT_READBACK = 0x0C;
+static constexpr uint8_t REG_TEMP_READBACK = 0x10;
+static constexpr uint8_t REG_VIN_READBACK  = 0x14;
+static constexpr uint8_t REG_VOUT_SET      = 0x18;
+static constexpr uint8_t REG_IOUT_SET      = 0x1C;
+static constexpr uint8_t REG_UID_W0        = 0x52;
+static constexpr uint8_t REG_I2C_ADDRESS   = 0x5F;
 
 static constexpr float MIN_OUTPUT_VOLTAGE = 0.5f;
 static constexpr float MAX_OUTPUT_VOLTAGE = 30.0f;
@@ -51,15 +51,15 @@ struct PpsSetpoints {
 };
 
 struct PpsTelemetry {
-    bool connected = false;
+    bool connected     = false;
     bool outputEnabled = false;
-    PpsMode mode = PpsMode::Disabled;
-    uint8_t dataFlag = 0;
-    float vin = 0.0f;
-    float temperature = 0.0f;
+    PpsMode mode       = PpsMode::Disabled;
+    uint8_t dataFlag   = 0;
+    float vin          = 0.0f;
+    float temperature  = 0.0f;
     float voutReadback = 0.0f;
     float ioutReadback = 0.0f;
-    float outputPower = 0.0f;
+    float outputPower  = 0.0f;
     PpsSetpoints setpoints;
     std::string lastError;
 };

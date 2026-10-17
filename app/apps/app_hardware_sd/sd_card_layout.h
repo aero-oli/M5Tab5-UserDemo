@@ -27,12 +27,12 @@ inline app_ui::Rect sdCardContentRect()
 inline SdCardLayout makeSdCardLayout()
 {
     SdCardLayout layout;
-    layout.content = sdCardContentRect();
-    layout.description = {0, 0, layout.content.w, 32};
-    layout.scanButton = {0, 72, 220, 60};
+    layout.content      = sdCardContentRect();
+    layout.description  = {0, 0, layout.content.w, 32};
+    layout.scanButton   = {0, 72, 220, 60};
     layout.resultsPanel = {0, layout.scanButton.y + layout.scanButton.h + layout.sectionGap, 900, 392};
     layout.resultsTitle = {0, 0, layout.resultsPanel.w - 32, 30};
-    layout.resultsText = {0, 48, layout.resultsPanel.w - 32, layout.resultsPanel.h - 76};
+    layout.resultsText  = {0, 48, layout.resultsPanel.w - 32, layout.resultsPanel.h - 76};
     return layout;
 }
 

@@ -13,7 +13,10 @@
 
 // Injected devices keep these tests independent of a real HAL instance.
 static hal::HalBase* testHal = nullptr;
-hal::HalBase* hal::Get() { return testHal; }
+hal::HalBase* hal::Get()
+{
+    return testHal;
+}
 
 using app_pps::OutputState;
 using app_pps::PpsController;
@@ -22,14 +25,17 @@ using namespace std::chrono_literals;
 
 class Device : public modules::I2cDevice {
 public:
-    struct Transaction { bool write; uint8_t reg; };
+    struct Transaction {
+        bool write;
+        uint8_t reg;
+    };
     Device()
     {
-        registers[pps::REG_MODULE_ID_L] = {0x41, 0x10};
-        registers[pps::REG_UID_W0] = std::vector<uint8_t>(12, 1);
+        registers[pps::REG_MODULE_ID_L]   = {0x41, 0x10};
+        registers[pps::REG_UID_W0]        = std::vector<uint8_t>(12, 1);
         registers[pps::REG_MODULE_ENABLE] = {1};
-        registers[pps::REG_RUNNING_MODE] = {1};
-        registers[pps::REG_DATA_FLAG] = {5};
+        registers[pps::REG_RUNNING_MODE]  = {1};
+        registers[pps::REG_DATA_FLAG]     = {5};
         setFloat(pps::REG_VOUT_READBACK, 5.01f);
         setFloat(pps::REG_IOUT_READBACK, 0.4f);
         setFloat(pps::REG_TEMP_READBACK, 32.0f);
@@ -37,8 +43,15 @@ public:
         setFloat(pps::REG_VOUT_SET, 5.0f);
         setFloat(pps::REG_IOUT_SET, 1.0f);
     }
-    bool probe() override { std::lock_guard<std::mutex> lock(mutex); return present; }
-    uint8_t address() const override { return 0x35; }
+    bool probe() override
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        return present;
+    }
+    uint8_t address() const override
+    {
+        return 0x35;
+    }
     bool readRegister(uint8_t reg, uint8_t* data, size_t length) override
     {
         std::unique_lock<std::mutex> lock(mutex);
@@ -79,10 +92,10 @@ public:
     void block(uint8_t reg, bool write)
     {
         std::lock_guard<std::mutex> lock(mutex);
-        blockReg = reg;
+        blockReg   = reg;
         blockWrite = write;
-        blocked = false;
-        released = false;
+        blocked    = false;
+        released   = false;
     }
     void awaitBlocked()
     {
@@ -115,32 +128,33 @@ public:
     std::mutex mutex;
     std::map<uint8_t, std::vector<uint8_t>> registers;
     std::vector<Transaction> transactions;
-    bool present = true;
-    int failRead = -1;
-    int failWrite = -1;
-    int ignoreWrite = -1;
-    int offWrites = 0;
+    bool present     = true;
+    int failRead     = -1;
+    int failWrite    = -1;
+    int ignoreWrite  = -1;
+    int offWrites    = 0;
     int enableWrites = 0;
 
 private:
     std::condition_variable changed;
-    int blockReg = -1;
+    int blockReg    = -1;
     bool blockWrite = false;
-    bool blocked = false;
-    bool released = false;
+    bool blocked    = false;
+    bool released   = false;
     void waitIfBlocked(std::unique_lock<std::mutex>& lock, uint8_t reg, bool write)
     {
         if (blockReg != reg || blockWrite != write) {
             return;
         }
         blockReg = -1;
-        blocked = true;
+        blocked  = true;
         changed.notify_all();
         assert(changed.wait_for(lock, 2s, [&] { return released; }));
     }
 };
 
-template<typename Predicate> void eventually(Predicate predicate)
+template <typename Predicate>
+void eventually(Predicate predicate)
 {
     const auto deadline = std::chrono::steady_clock::now() + 2s;
     while (!predicate()) {
@@ -154,7 +168,9 @@ struct Fixture {
     // Shared clock outlives the controller if Back leaves an I2C transaction in flight.
     std::shared_ptr<std::atomic<uint32_t>> now = std::make_shared<std::atomic<uint32_t>>(200);
     std::unique_ptr<PpsController> controller;
-    Fixture() : controller(std::make_unique<PpsController>(device, [clock = now] { return clock->load(); })) {}
+    Fixture() : controller(std::make_unique<PpsController>(device, [clock = now] { return clock->load(); }))
+    {
+    }
     void ready()
     {
         controller->update(now->load());
@@ -217,7 +233,7 @@ static void failure_preserves_last_good_but_marks_output_unknown_and_reconnects_
     eventually([&] { return !fixture.controller->state().telemetry.connected; });
     auto state = fixture.controller->state();
     assert(state.output == OutputState::Unknown);
-    assert(state.telemetry.outputEnabled); // last known, not a fresh output claim
+    assert(state.telemetry.outputEnabled);  // last known, not a fresh output claim
     assert(state.telemetry.voutReadback == 5.01f);
     assert(!fixture.controller->applySetpoints(400));
     assert(!fixture.controller->setOutputEnabled(true, 400));
@@ -257,7 +273,7 @@ static void partial_and_missed_writes_cannot_enable_output()
     assert(!fixture.controller->setOutputEnabled(true, 400));
     {
         std::lock_guard<std::mutex> lock(fixture.device->mutex);
-        fixture.device->failWrite = -1;
+        fixture.device->failWrite   = -1;
         fixture.device->ignoreWrite = pps::REG_IOUT_SET;
     }
     assert(fixture.controller->applySetpoints(400));
@@ -324,7 +340,7 @@ static void emergency_off_interrupts_poll_without_waiting_on_caller()
     assert(fixture.controller->state().output == OutputState::Disabled);
     std::lock_guard<std::mutex> lock(fixture.device->mutex);
     const auto& transactions = fixture.device->transactions;
-    size_t interruptedRead = transactions.size();
+    size_t interruptedRead   = transactions.size();
     for (size_t i = 0; i < transactions.size(); ++i) {
         if (!transactions[i].write && transactions[i].reg == pps::REG_VOUT_READBACK) {
             interruptedRead = i;
@@ -361,7 +377,8 @@ static void failed_initial_off_keeps_controls_locked()
         fixture.device->ignoreWrite = pps::REG_MODULE_ENABLE;
     }
     fixture.poll();
-    eventually([&] { return fixture.controller->state().telemetry.lastError.find("Cannot confirm") != std::string::npos; });
+    eventually(
+        [&] { return fixture.controller->state().telemetry.lastError.find("Cannot confirm") != std::string::npos; });
     assert(fixture.device->enabled());
     assert(fixture.controller->state().output == OutputState::Unknown);
     assert(!fixture.controller->applySetpoints(400));
@@ -372,12 +389,22 @@ static void failed_off_remains_visible_after_close_and_can_be_retried()
 {
     struct TestHal : hal::HalBase {
         Device device;
-        uint32_t millis() override { return 500; }
-        bool i2cProbe(hal::ModuleBus, uint8_t) override { return device.probe(); }
+        uint32_t millis() override
+        {
+            return 500;
+        }
+        bool i2cProbe(hal::ModuleBus, uint8_t) override
+        {
+            return device.probe();
+        }
         bool i2cReadRegister(hal::ModuleBus, uint8_t, uint8_t reg, uint8_t* data, size_t size) override
-        { return device.readRegister(reg, data, size); }
+        {
+            return device.readRegister(reg, data, size);
+        }
         bool i2cWriteRegister(hal::ModuleBus, uint8_t, uint8_t reg, const uint8_t* data, size_t size) override
-        { return device.writeRegister(reg, data, size); }
+        {
+            return device.writeRegister(reg, data, size);
+        }
     } hal;
     testHal = &hal;
     assert(!PpsController::backgroundState());

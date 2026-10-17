@@ -28,7 +28,7 @@ public:
                 return state->value;
             }
             state->value.pending = true;
-            snapshot = state->value;
+            snapshot             = state->value;
         }
         if (!_runner->start(name, [state, read = std::move(read)] {
                 auto value = read();
@@ -40,7 +40,7 @@ public:
             })) {
             std::lock_guard<std::mutex> lock(state->mutex);
             state->value.pending = false;
-            snapshot = state->value;
+            snapshot             = state->value;
         }
         return snapshot;
     }
@@ -56,7 +56,7 @@ private:
         std::mutex mutex;
         Sample value;
     };
-    std::shared_ptr<State> _state = std::make_shared<State>();
+    std::shared_ptr<State> _state           = std::make_shared<State>();
     std::shared_ptr<AsyncJobRunner> _runner = std::make_shared<AsyncJobRunner>();
 };
 

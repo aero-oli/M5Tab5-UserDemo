@@ -16,11 +16,11 @@ struct QueuedJob {
 int main()
 {
     std::vector<QueuedJob> jobs;
-    int scans = 0;
-    int connects = 0;
+    int scans       = 0;
+    int connects    = 0;
     int disconnects = 0;
-    int apStarts = 0;
-    int apStops = 0;
+    int apStarts    = 0;
+    int apStops     = 0;
     std::string connectedSsid;
     bool extAntenna = false;
 
@@ -30,7 +30,7 @@ int main()
 
     NetworkCallbacks callbacks;
     callbacks.otaStatus = [&] { return ota; };
-    callbacks.status = [&] {
+    callbacks.status    = [&] {
         status.extAntennaEnabled = extAntenna;
         return status;
     };
@@ -41,9 +41,9 @@ int main()
     callbacks.connect = [&](const std::string& ssid, const std::string& password) {
         (void)password;
         ++connects;
-        connectedSsid = ssid;
-        status.state = hal::HalBase::WifiConnectionState::Connected;
-        status.ssid = ssid;
+        connectedSsid    = ssid;
+        status.state     = hal::HalBase::WifiConnectionState::Connected;
+        status.ssid      = ssid;
         status.ipAddress = "192.168.1.42";
         return true;
     };
@@ -52,10 +52,10 @@ int main()
         status = {};
     };
     callbacks.setExtAntenna = [&](bool enabled) { extAntenna = enabled; };
-    callbacks.startAp = [&] {
+    callbacks.startAp       = [&] {
         ++apStarts;
-        status.state = hal::HalBase::WifiConnectionState::ApRunning;
-        status.ssid = "M5Tab5-UserDemo-WiFi";
+        status.state     = hal::HalBase::WifiConnectionState::ApRunning;
+        status.ssid      = "M5Tab5-UserDemo-WiFi";
         status.ipAddress = "192.168.4.1";
         return true;
     };
@@ -102,7 +102,7 @@ int main()
     assert(snapshot.status.state == hal::HalBase::WifiConnectionState::Connected);
 
     controller.setExtAntennaEnabled(true);
-    assert(!extAntenna); // The UI request must not run blocking hardware IO inline.
+    assert(!extAntenna);  // The UI request must not run blocking hardware IO inline.
     assert(controller.refresh().busy);
     jobs.back().work();
     snapshot = controller.refresh();
@@ -126,7 +126,7 @@ int main()
     assert(disconnects == 1);
     assert(snapshot.detail == "Disconnected.");
 
-    ota.state = hal::HalBase::OtaState::Downloading;
+    ota.state         = hal::HalBase::OtaState::Downloading;
     const auto before = jobs.size();
     assert(controller.refresh().updateActive);
     assert(!controller.scan() && !controller.connect("Workshop", "secret"));

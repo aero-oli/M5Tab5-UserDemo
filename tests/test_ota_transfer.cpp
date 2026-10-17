@@ -9,7 +9,7 @@
 #include <vector>
 
 namespace {
-using Outcome = hal::OtaTransferOutcome;
+using Outcome             = hal::OtaTransferOutcome;
 constexpr const char* url = "https://firmware.example/m5stack_tab5.bin";
 
 // Transport and flash boundaries are injected; control flow, bounds, progress,
@@ -19,7 +19,7 @@ struct Transfer {
     std::vector<uint8_t> written;
     std::vector<std::string> events;
     std::vector<std::tuple<size_t, size_t, bool>> progress;
-    int status = 200;
+    int status       = 200;
     int64_t declared = 7000;
     size_t capacity = 8192, chunk = 113, offset = 0, beginSize = 0;
     bool completeBody = true, cancelled = false, commitAllowed = true;
@@ -33,11 +33,14 @@ struct Transfer {
         // ESP-IDF image24 + first segment8 + app descriptor256. This fixture
         // covers header policy; the injected flash validator stands in for SDK
         // whole-image checksum/signature validation, not a bootability proof.
-        body[0] = 0xe9;
-        body[1] = 4;
-        body[12] = 0x12; // ESP32-P4, current Tab5 SDK firmware chip id.
-        body[13] = 0;
-        body[32] = 0x32; body[33] = 0x54; body[34] = 0xcd; body[35] = 0xab;
+        body[0]           = 0xe9;
+        body[1]           = 4;
+        body[12]          = 0x12;  // ESP32-P4, current Tab5 SDK firmware chip id.
+        body[13]          = 0;
+        body[32]          = 0x32;
+        body[33]          = 0x54;
+        body[34]          = 0xcd;
+        body[35]          = 0xab;
         const char name[] = "m5stack_tab5";
         std::memcpy(body.data() + 80, name, sizeof(name));
     }
@@ -45,8 +48,10 @@ struct Transfer {
     {
         events.push_back(name);
         if (cancelAt == name) {
-            if (network) network->cancelOta();
-            else cancelled = true;
+            if (network)
+                network->cancelOta();
+            else
+                cancelled = true;
         }
         if (failAt != name) return true;
         if (error) *error = "Injected " + name + " failure";
@@ -68,7 +73,10 @@ struct Transfer {
             offset += size;
             return static_cast<int>(size);
         };
-        io.bodyComplete = [&] { event("bodyComplete"); return completeBody; };
+        io.bodyComplete = [&] {
+            event("bodyComplete");
+            return completeBody;
+        };
         io.validateHeader = [&](const uint8_t* data, size_t bytes, std::string& error) {
             assert(bytes >= hal::kOtaHeaderBytes && data[0] == body[0]);
             return event("header", &error) && hal::validOtaImageHeader(data, bytes, 0x12, "m5stack_tab5", error);
@@ -93,7 +101,10 @@ struct Transfer {
             validated = true;
             return true;
         };
-        io.enterCommit = [&] { event("commit"); return commitAllowed && (network ? network->enterOtaCommit() : !cancelled); };
+        io.enterCommit = [&] {
+            event("commit");
+            return commitAllowed && (network ? network->enterOtaCommit() : !cancelled);
+        };
         io.selectBoot = [&](std::string& error) {
             assert(validated);
             ++selections;
@@ -102,10 +113,13 @@ struct Transfer {
         io.cleanup = [&] {
             event("cleanup");
             ++cleanups;
-            if (flashOpen) { ++aborts; flashOpen = false; }
+            if (flashOpen) {
+                ++aborts;
+                flashOpen = false;
+            }
         };
         io.cancelled = [&] { return network ? network->otaCancelled() : cancelled; };
-        io.progress = [&](size_t bytes, size_t total, bool known) {
+        io.progress  = [&](size_t bytes, size_t total, bool known) {
             event("progress");
             progress.emplace_back(bytes, total, known);
         };
@@ -118,7 +132,10 @@ struct Transfer {
         assert(cleanups == 1 && events.back() == "cleanup");
         return result;
     }
-    bool called(const std::string& name) const { return std::find(events.begin(), events.end(), name) != events.end(); }
+    bool called(const std::string& name) const
+    {
+        return std::find(events.begin(), events.end(), name) != events.end();
+    }
     size_t index(const std::string& name) const
     {
         const auto it = std::find(events.begin(), events.end(), name);
@@ -157,10 +174,11 @@ void test_success_and_real_progress()
 
 void test_url_trust_policy_and_response_rejections()
 {
-    for (const auto* rejected : {"", "http://firmware.example/app.bin", "ftp://firmware.example/app.bin",
-             "https://", "https:///app.bin", "https://user:password@example.com/app.bin",
-             "https://example.com/app.bin#fragment", "https://example.com/a b.bin", "https://example.com/\\app.bin",
-             "https://example.com/app.bin\r\nX-Header: injected"}) {
+    for (const auto* rejected :
+         {"", "http://firmware.example/app.bin", "ftp://firmware.example/app.bin", "https://", "https:///app.bin",
+          "https://user:password@example.com/app.bin", "https://example.com/app.bin#fragment",
+          "https://example.com/a b.bin", "https://example.com/\\app.bin",
+          "https://example.com/app.bin\r\nX-Header: injected"}) {
         assert(!hal::validOtaUrl(rejected));
         Transfer transfer;
         const auto result = transfer.run(rejected);
@@ -172,7 +190,7 @@ void test_url_trust_policy_and_response_rejections()
     assert(!hal::validOtaUrl(std::string("https://example.com/") + std::string(2048, 'x')));
     for (const int status : {201, 204, 206, 301, 302, 303, 307, 308, 401, 403, 404, 500, 503}) {
         Transfer transfer;
-        transfer.status = status;
+        transfer.status   = status;
         const auto result = transfer.run();
         assert(result.outcome == Outcome::Failed && !result.error.empty());
         assert(!transfer.called("read") && !transfer.called("begin") && transfer.selections == 0);
@@ -195,14 +213,14 @@ void test_size_and_incomplete_body_rejections()
     }
     for (const bool known : {true, false}) {
         Transfer transfer;
-        transfer.body.resize(200); // A descriptor cannot be completed, even with unknown length.
+        transfer.body.resize(200);  // A descriptor cannot be completed, even with unknown length.
         if (!known) transfer.declared = -1;
         assert(transfer.run().outcome == Outcome::Failed);
         assert(!transfer.called("begin") && !transfer.called("validate") && transfer.selections == 0);
     }
     {
         Transfer transfer;
-        transfer.body.resize(5000); // Declared 7000 but transport ends early.
+        transfer.body.resize(5000);  // Declared 7000 but transport ends early.
         assert(transfer.run().outcome == Outcome::Failed);
         assert(transfer.begun && transfer.aborts == 1 && transfer.selections == 0);
     }
@@ -230,7 +248,7 @@ void test_transport_flash_and_validation_failures()
 {
     for (const auto* stage : {"open", "read", "header", "begin", "write", "validate", "select"}) {
         Transfer transfer;
-        transfer.failAt = stage;
+        transfer.failAt   = stage;
         const auto result = transfer.run();
         assert(result.outcome == Outcome::Failed && !result.error.empty());
         assert(transfer.selections == (std::string(stage) == "select" ? 1 : 0));
@@ -244,13 +262,27 @@ void test_wrong_image_header_policy()
     for (const int mutation : {0, 1, 2, 3, 4, 5, 6}) {
         Transfer transfer;
         switch (mutation) {
-            case 0: transfer.body[0] = '<'; break; // An HTML response with HTTP200.
-            case 1: transfer.body[1] = 0; break;
-            case 2: transfer.body[1] = 17; break;
-            case 3: transfer.body[12] = 0; break; // Wrong Espressif target.
-            case 4: transfer.body[32] = 0; break; // Missing app descriptor.
-            case 5: transfer.body[80] = 'x'; break; // Different project.
-            case 6: std::fill(transfer.body.begin() + 80, transfer.body.begin() + 112, 'x'); break;
+            case 0:
+                transfer.body[0] = '<';
+                break;  // An HTML response with HTTP200.
+            case 1:
+                transfer.body[1] = 0;
+                break;
+            case 2:
+                transfer.body[1] = 17;
+                break;
+            case 3:
+                transfer.body[12] = 0;
+                break;  // Wrong Espressif target.
+            case 4:
+                transfer.body[32] = 0;
+                break;  // Missing app descriptor.
+            case 5:
+                transfer.body[80] = 'x';
+                break;  // Different project.
+            case 6:
+                std::fill(transfer.body.begin() + 80, transfer.body.begin() + 112, 'x');
+                break;
         }
         const auto result = transfer.run();
         assert(result.outcome == Outcome::Failed && !result.error.empty());
@@ -268,7 +300,8 @@ void test_cancellation_before_commit()
         transfer.cancelled = true;
         assert(transfer.run().outcome == Outcome::Cancelled && !transfer.called("open"));
     }
-    for (const auto* stage : {"open", "read", "progress", "header", "begin", "write", "installing", "validate", "commit"}) {
+    for (const auto* stage :
+         {"open", "read", "progress", "header", "begin", "write", "installing", "validate", "commit"}) {
         Transfer transfer;
         transfer.cancelAt = stage;
         const auto result = transfer.run();
@@ -280,7 +313,7 @@ void test_cancellation_before_commit()
     for (const auto* stage : {"open", "read", "header", "begin", "write", "validate"}) {
         Transfer transfer;
         transfer.cancelAt = transfer.failAt = stage;
-        const auto result = transfer.run();
+        const auto result                   = transfer.run();
         assert(result.outcome == Outcome::Cancelled && transfer.selections == 0);
         assert(result.error == "Update cancelled");
     }
@@ -299,18 +332,18 @@ void test_production_network_reservation_and_commit_barrier()
 {
     using namespace std::chrono;
     hal::NetworkState network;
-    assert(!network.reserveOta()); // A disconnected radio cannot own an update.
+    assert(!network.reserveOta());  // A disconnected radio cannot own an update.
     connect(network);
     assert(network.reserveOta());
     assert(!network.reserveOta() && !network.allowsCommands());
     Transfer transfer;
     transfer.network = &network;
-    auto io = transfer.callbacks();
-    auto open = io.open;
-    auto cleanup = io.cleanup;
+    auto io          = transfer.callbacks();
+    auto open        = io.open;
+    auto cleanup     = io.cleanup;
     std::promise<void> entered, release;
     auto gate = release.get_future().share();
-    io.open = [&](const std::string& requested, hal::OtaSourceInfo& source, std::string& error) {
+    io.open   = [&](const std::string& requested, hal::OtaSourceInfo& source, std::string& error) {
         entered.set_value();
         gate.wait();
         return open(requested, source, error);
@@ -343,22 +376,25 @@ void test_production_network_reservation_and_commit_barrier()
 
     // Cancellation wins immediately before commit: no partition selection.
     Transfer beforeCommit;
-    beforeCommit.network = &network;
+    beforeCommit.network  = &network;
     beforeCommit.cancelAt = "validate";
     assert(beforeCommit.run().outcome == Outcome::Cancelled && beforeCommit.selections == 0);
     network.update([](auto& state) { state.otaActive = false; });
     assert(network.reserveOta());
     // Once commit wins, a later cancellation request is explicitly refused.
     Transfer afterCommit;
-    afterCommit.network = &network;
+    afterCommit.network  = &network;
     afterCommit.cancelAt = "select";
     assert(afterCommit.run().outcome == Outcome::Complete && afterCommit.selections == 1);
     assert(!network.otaCancelled() && !network.snapshot().ota.canCancel);
-    network.update([](auto& state) { state.otaActive = false; state.ota.rebootRequired = true; });
+    network.update([](auto& state) {
+        state.otaActive          = false;
+        state.ota.rebootRequired = true;
+    });
     assert(!network.reserveOta());
 }
 
-} // namespace
+}  // namespace
 
 int main()
 {

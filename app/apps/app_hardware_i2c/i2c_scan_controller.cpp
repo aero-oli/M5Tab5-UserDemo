@@ -19,31 +19,31 @@ bool I2cScanController::startScan(bool internalBus)
     if (!_scanFn) {
         std::lock_guard<std::mutex> lock(_mutex);
         _statusText = "I2C scan is unavailable.";
-        _busy = false;
+        _busy       = false;
         return false;
     }
 
-    auto state = std::make_shared<ScanState>();
+    auto state  = std::make_shared<ScanState>();
     auto scanFn = _scanFn;
-    if (!app_runtime::globalAsyncJobRunner().start(internalBus ? "internal I2C scan" : "port A I2C scan",
-                                                   [state, scanFn, internalBus]() {
-                                                       auto devices = scanFn(internalBus);
-                                                       auto text = I2cScanController::formatResult(internalBus, devices);
-                                                       std::lock_guard<std::mutex> lock(state->mutex);
-                                                       state->text = std::move(text);
-                                                       state->complete = true;
-                                                   })) {
+    if (!app_runtime::globalAsyncJobRunner().start(
+            internalBus ? "internal I2C scan" : "port A I2C scan", [state, scanFn, internalBus]() {
+                auto devices = scanFn(internalBus);
+                auto text    = I2cScanController::formatResult(internalBus, devices);
+                std::lock_guard<std::mutex> lock(state->mutex);
+                state->text     = std::move(text);
+                state->complete = true;
+            })) {
         std::lock_guard<std::mutex> lock(_mutex);
         _statusText = "Another background task is already running. Try again in a moment.";
-        _busy = false;
+        _busy       = false;
         return false;
     }
 
     {
         std::lock_guard<std::mutex> lock(_mutex);
-        _scanState = state;
+        _scanState  = state;
         _statusText = internalBus ? "Scanning internal I2C bus..." : "Scanning Port A I2C bus...";
-        _busy = true;
+        _busy       = true;
     }
     return true;
 }
@@ -70,7 +70,7 @@ void I2cScanController::refresh()
 
     std::lock_guard<std::mutex> lock(_mutex);
     _statusText = std::move(text);
-    _busy = false;
+    _busy       = false;
     _scanState.reset();
 }
 

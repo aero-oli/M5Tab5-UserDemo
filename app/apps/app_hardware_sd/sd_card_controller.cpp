@@ -9,8 +9,7 @@
 
 using namespace app_hardware_sd;
 
-SdCardController::SdCardController(ScanFn scanFn)
-    : _scanFn(std::move(scanFn))
+SdCardController::SdCardController(ScanFn scanFn) : _scanFn(std::move(scanFn))
 {
 }
 
@@ -23,28 +22,28 @@ bool SdCardController::startScan()
             _statusText = "SD card scan is unavailable.";
             return false;
         }
-        _busy = true; // Reserve locally before another caller can submit a scan.
+        _busy = true;  // Reserve locally before another caller can submit a scan.
     }
 
-    auto state = std::make_shared<ScanState>();
+    auto state  = std::make_shared<ScanState>();
     auto scanFn = _scanFn;
     if (!app_runtime::globalAsyncJobRunner().start("SD card scan", [state, scanFn]() {
             auto text = SdCardController::formatResult(scanFn("/"));
             std::lock_guard<std::mutex> lock(state->mutex);
-            state->text = std::move(text);
+            state->text     = std::move(text);
             state->complete = true;
         })) {
         std::lock_guard<std::mutex> lock(_mutex);
         _statusText = "Another background task is already running. Try again in a moment.";
-        _busy = false;
+        _busy       = false;
         return false;
     }
 
     {
         std::lock_guard<std::mutex> lock(_mutex);
-        _scanState = state;
+        _scanState  = state;
         _statusText = "Scanning SD card...";
-        _busy = true;
+        _busy       = true;
     }
     return true;
 }
@@ -72,7 +71,7 @@ void SdCardController::refresh()
     std::lock_guard<std::mutex> lock(_mutex);
     if (_scanState == state) {
         _statusText = std::move(text);
-        _busy = false;
+        _busy       = false;
         _scanState.reset();
     }
 }
@@ -91,13 +90,17 @@ std::string SdCardController::statusText() const
 
 std::string SdCardController::formatResult(const hal::HalBase::SdScanResult& result)
 {
-    using Status = hal::HalBase::SdScanStatus;
+    using Status             = hal::HalBase::SdScanStatus;
     const std::string source = result.simulated ? "Desktop simulation: " : "";
     switch (result.status) {
-        case Status::MountFailed: return source + "SD card mount failed. " + result.error;
-        case Status::ReadFailed: return source + "SD card scan failed. " + result.error;
-        case Status::Unavailable: return source + "SD card scan unavailable. " + result.error;
-        case Status::Success: break;
+        case Status::MountFailed:
+            return source + "SD card mount failed. " + result.error;
+        case Status::ReadFailed:
+            return source + "SD card scan failed. " + result.error;
+        case Status::Unavailable:
+            return source + "SD card scan unavailable. " + result.error;
+        case Status::Success:
+            break;
     }
     if (result.entries.empty()) return source + "SD card root is empty.";
     std::ostringstream out;

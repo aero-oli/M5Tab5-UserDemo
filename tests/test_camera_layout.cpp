@@ -11,8 +11,8 @@ static void test_camera_frame_is_letterboxed_without_cropping()
     assert(fit.scale == 0.625f);
     assert(fit.width == 800 && fit.height == 450);
     assert(fit.x == 30 && fit.y == 17);
-    for (const auto& source : {app_ui::Rect{0, 0, 1920, 1080}, app_ui::Rect{0, 0, 720, 1280},
-                              app_ui::Rect{0, 0, 640, 480}}) {
+    for (const auto& source :
+         {app_ui::Rect{0, 0, 1920, 1080}, app_ui::Rect{0, 0, 720, 1280}, app_ui::Rect{0, 0, 640, 480}}) {
         const auto fitted = hal::fitCameraPreview(source.w, source.h, 860, 484);
         assert(fitted.valid());
         assert(app_ui::contains({0, 0, 860, 484}, {fitted.x, fitted.y, fitted.width, fitted.height}));

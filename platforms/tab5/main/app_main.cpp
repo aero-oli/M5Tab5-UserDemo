@@ -21,18 +21,21 @@
 #include <freertos/task.h>
 
 namespace {
-constexpr const char* bootTag = "boot-health";
-constexpr uint64_t pendingBootTimeoutUs = 15000000; // Includes HAL/app initialization and diagnostics.
+constexpr const char* bootTag           = "boot-health";
+constexpr uint64_t pendingBootTimeoutUs = 15000000;  // Includes HAL/app initialization and diagnostics.
 std::atomic<bool> imageConfirmed{false};
 esp_timer_handle_t pendingBootWatchdog = nullptr;
 
 bool pendingImage()
 {
     const auto* running = esp_ota_get_running_partition();
-    if (!running) { ESP_LOGE(bootTag, "Cannot identify running image"); std::abort(); }
+    if (!running) {
+        ESP_LOGE(bootTag, "Cannot identify running image");
+        std::abort();
+    }
     if (running->subtype == ESP_PARTITION_SUBTYPE_APP_FACTORY) return false;
     esp_ota_img_states_t state = ESP_OTA_IMG_UNDEFINED;
-    const auto result = esp_ota_get_state_partition(running, &state);
+    const auto result          = esp_ota_get_state_partition(running, &state);
     if (result != ESP_OK) {
         ESP_LOGE(bootTag, "Cannot read OTA image state: %s; image remains unconfirmed", esp_err_to_name(result));
         std::abort();
@@ -54,7 +57,7 @@ void armPendingBootWatchdog()
     // startup.c completes do_secondary_init() before FreeRTOS calls app_main().
     // This independent timer remains live while app::Init or a display lock hangs.
     esp_timer_create_args_t args{};
-    args.name = "pending_boot";
+    args.name     = "pending_boot";
     args.callback = [](void*) {
         // Never take a display/log mutex or inspect flash from the timer task.
         // A reset with PENDING_VERIFY makes the rollback-enabled bootloader reject it.
@@ -84,20 +87,23 @@ void verifyPendingImage()
     lv_timer_t* probe = nullptr;
     {
         LvglLockGuard lock;
-        probe = lv_timer_create([](lv_timer_t*) {
-            auto* display = static_cast<HalEsp32*>(GetHAL())->lvDisp;
-            if (display) lv_obj_invalidate(lv_display_get_screen_active(display));
-        }, 250, nullptr);
+        probe = lv_timer_create(
+            [](lv_timer_t*) {
+                auto* display = static_cast<HalEsp32*>(GetHAL())->lvDisp;
+                if (display) lv_obj_invalidate(lv_display_get_screen_active(display));
+            },
+            250, nullptr);
     }
     const auto initial = app_runtime::globalPerformanceTelemetry().snapshot();
     app_runtime::BootHealthGate gate(GetHAL()->millis(), initial.totalAppUpdates, initial.renderedFrames);
     for (;;) {
-        const auto sample = app_runtime::globalPerformanceTelemetry().snapshot();
+        const auto sample    = app_runtime::globalPerformanceTelemetry().snapshot();
         const bool coreReady = probe && static_cast<HalEsp32*>(GetHAL())->lvDisp && bsp_display_get_input_dev() &&
                                !app_registry::registry().all().empty();
-        const auto decision = gate.observe(GetHAL()->millis(), sample.totalAppUpdates, sample.renderedFrames, coreReady);
+        const auto decision =
+            gate.observe(GetHAL()->millis(), sample.totalAppUpdates, sample.renderedFrames, coreReady);
         if (decision == app_runtime::BootHealthGate::Decision::Reject)
-            rejectImage("Core startup diagnostics timed out"); // No display lock on this failure path.
+            rejectImage("Core startup diagnostics timed out");  // No display lock on this failure path.
         if (decision == app_runtime::BootHealthGate::Decision::Accept) break;
         vTaskDelay(pdMS_TO_TICKS(20));
     }
@@ -108,13 +114,13 @@ void verifyPendingImage()
     const auto result = esp_ota_mark_app_valid_cancel_rollback();
     if (result != ESP_OK) rejectImage("Could not persist startup confirmation");
     esp_ota_img_states_t actual = ESP_OTA_IMG_UNDEFINED;
-    const auto* running = esp_ota_get_running_partition();
+    const auto* running         = esp_ota_get_running_partition();
     if (!running || esp_ota_get_state_partition(running, &actual) != ESP_OK || actual != ESP_OTA_IMG_VALID)
         rejectImage("Startup confirmation readback failed");
     disarmConfirmedBootWatchdog();
     ESP_LOGI(bootTag, "Core UI/input scheduling and rendering passed; image marked valid (peripherals unverified)");
 }
-} // namespace
+}  // namespace
 
 extern "C" void app_main(void)
 {

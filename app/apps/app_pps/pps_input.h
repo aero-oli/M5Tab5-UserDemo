@@ -12,14 +12,17 @@ inline bool parseSetpoint(const std::string& text, uint32_t minimumMilli, uint32
     uint32_t whole = 0, fraction = 0, digits = 0;
     bool decimal = false, hasWhole = false;
     for (char c : text) {
-        if (c == '.' && !decimal && hasWhole) { decimal = true; continue; }
+        if (c == '.' && !decimal && hasWhole) {
+            decimal = true;
+            continue;
+        }
         if (c < '0' || c > '9') return false;
         if (decimal) {
             if (++digits > 3) return false;
             fraction = fraction * 10 + static_cast<uint32_t>(c - '0');
         } else {
             hasWhole = true;
-            whole = whole * 10 + static_cast<uint32_t>(c - '0');
+            whole    = whole * 10 + static_cast<uint32_t>(c - '0');
             if (whole > maximumMilli / 1000) return false;
         }
     }

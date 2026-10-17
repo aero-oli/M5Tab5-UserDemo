@@ -12,11 +12,11 @@ public:
     struct Snapshot {
         HalBase::WifiStatus wifi;
         HalBase::OtaStatus ota;
-        bool otaActive = false;
-        bool otaCancelRequested = false;
-        bool accepting = true;
-        bool stationWanted = false;
-        uint64_t wifiGeneration = 0;
+        bool otaActive                 = false;
+        bool otaCancelRequested        = false;
+        bool accepting                 = true;
+        bool stationWanted             = false;
+        uint64_t wifiGeneration        = 0;
         uint32_t connectionStartedAtMs = 0;
     };
 
@@ -37,11 +37,11 @@ public:
     {
         std::lock_guard<std::mutex> lock(_mutex);
         ++_state.wifiGeneration;
-        _state.stationWanted = true;
+        _state.stationWanted         = true;
         _state.connectionStartedAtMs = nowMs;
-        _state.wifi.mode = HalBase::WifiMode::Station;
-        _state.wifi.state = HalBase::WifiConnectionState::Connecting;
-        _state.wifi.ssid = ssid;
+        _state.wifi.mode             = HalBase::WifiMode::Station;
+        _state.wifi.state            = HalBase::WifiConnectionState::Connecting;
+        _state.wifi.ssid             = ssid;
         _state.wifi.ipAddress.clear();
         _state.wifi.lastError.clear();
         return _state.wifiGeneration;
@@ -50,7 +50,8 @@ public:
     {
         std::lock_guard<std::mutex> lock(_mutex);
         if (!_state.stationWanted || _state.wifi.state != HalBase::WifiConnectionState::Connecting ||
-            nowMs - _state.connectionStartedAtMs < timeoutMs) return false;
+            nowMs - _state.connectionStartedAtMs < timeoutMs)
+            return false;
         _state.stationWanted = false;
         ++_state.wifiGeneration;
         _state.wifi.state = HalBase::WifiConnectionState::Failed;
@@ -68,9 +69,9 @@ public:
     {
         std::lock_guard<std::mutex> lock(_mutex);
         if (!stationMatches(generation, ssid)) return false;
-        _state.wifi.state = HalBase::WifiConnectionState::Connected;
+        _state.wifi.state     = HalBase::WifiConnectionState::Connected;
         _state.wifi.ipAddress = ip;
-        _state.wifi.rssi = rssi;
+        _state.wifi.rssi      = rssi;
         _state.wifi.lastError.clear();
         return true;
     }
@@ -106,11 +107,12 @@ public:
     {
         std::lock_guard<std::mutex> lock(_mutex);
         if (!_state.accepting || _state.otaActive || _state.ota.rebootRequired ||
-            _state.wifi.state != HalBase::WifiConnectionState::Connected) return false;
-        _state.ota = {};
-        _state.ota.state = HalBase::OtaState::Checking;
-        _state.ota.canCancel = true;
-        _state.otaActive = true;
+            _state.wifi.state != HalBase::WifiConnectionState::Connected)
+            return false;
+        _state.ota                = {};
+        _state.ota.state          = HalBase::OtaState::Checking;
+        _state.ota.canCancel      = true;
+        _state.otaActive          = true;
         _state.otaCancelRequested = false;
         return true;
     }
@@ -124,7 +126,7 @@ public:
         std::lock_guard<std::mutex> lock(_mutex);
         if (!_state.otaActive || _state.otaCancelRequested || !_state.accepting) return false;
         _state.ota.canCancel = false;
-        _state.ota.state = HalBase::OtaState::Installing;
+        _state.ota.state     = HalBase::OtaState::Installing;
         return true;
     }
     void cancelOta()
@@ -154,7 +156,7 @@ private:
     {
         if (_state.otaActive && _state.ota.canCancel) {
             _state.otaCancelRequested = true;
-            _state.ota.state = HalBase::OtaState::Cancelling;
+            _state.ota.state          = HalBase::OtaState::Cancelling;
         }
     }
     mutable std::mutex _mutex;
@@ -168,12 +170,19 @@ public:
     explicit NetworkCommandLease(std::atomic<bool>& busy) : _busy(busy)
     {
         bool expected = false;
-        _acquired = _busy.compare_exchange_strong(expected, true);
+        _acquired     = _busy.compare_exchange_strong(expected, true);
     }
-    ~NetworkCommandLease() { if (_acquired) _busy.store(false); }
-    explicit operator bool() const { return _acquired; }
+    ~NetworkCommandLease()
+    {
+        if (_acquired) _busy.store(false);
+    }
+    explicit operator bool() const
+    {
+        return _acquired;
+    }
     NetworkCommandLease(const NetworkCommandLease&) = delete;
     NetworkCommandLease& operator=(const NetworkCommandLease&) = delete;
+
 private:
     std::atomic<bool>& _busy;
     bool _acquired = false;

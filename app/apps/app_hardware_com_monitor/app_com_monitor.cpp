@@ -58,8 +58,8 @@ public:
 private:
     ComMonitorController _controller;
     std::unique_ptr<app_ui::AppShell> _shell;
-    lv_obj_t* _log = nullptr;
-    lv_obj_t* _status = nullptr;
+    lv_obj_t* _log         = nullptr;
+    lv_obj_t* _status      = nullptr;
     lv_obj_t* _logViewport = nullptr;
     uint32_t _lastUpdateMs = 0;
 
@@ -72,23 +72,23 @@ private:
     {
         LvglLockGuard lock;
         const auto layout = makeComMonitorLayout();
-        auto* description = app_ui::makeLabel(content(), "RS485 serial monitor.", layout.description.x,
-                                              layout.description.y, &lv_font_montserrat_20,
-                                              app_ui::theme::color(app_ui::theme::muted));
+        auto* description =
+            app_ui::makeLabel(content(), "RS485 serial monitor.", layout.description.x, layout.description.y,
+                              &lv_font_montserrat_20, app_ui::theme::color(app_ui::theme::muted));
         lv_obj_set_width(description, layout.description.w);
         lv_label_set_long_mode(description, LV_LABEL_LONG_DOT);
 
-        auto* panel = app_ui::makePanel(content(), layout.logPanel.x, layout.logPanel.y, layout.logPanel.w,
-                                        layout.logPanel.h);
+        auto* panel =
+            app_ui::makePanel(content(), layout.logPanel.x, layout.logPanel.y, layout.logPanel.w, layout.logPanel.h);
         auto* title = app_ui::makeLabel(panel, "RX Log", layout.logTitle.x, layout.logTitle.y, &lv_font_montserrat_20,
                                         app_ui::theme::color(app_ui::theme::text));
         lv_obj_set_width(title, layout.logTitle.w);
         lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
-        _logViewport = app_ui::makeScrollableContent(panel, layout.logText.x, layout.logText.y,
-                                                     layout.logText.w, layout.logText.h);
+        _logViewport = app_ui::makeScrollableContent(panel, layout.logText.x, layout.logText.y, layout.logText.w,
+                                                     layout.logText.h);
         const auto& retained = _controller.logText();
-        _log = app_ui::makeLabel(_logViewport, retained.empty() ? "No data received." : retained.c_str(),
-                                 0, 0, &lv_font_montserrat_18, app_ui::theme::color(app_ui::theme::muted));
+        _log = app_ui::makeLabel(_logViewport, retained.empty() ? "No data received." : retained.c_str(), 0, 0,
+                                 &lv_font_montserrat_18, app_ui::theme::color(app_ui::theme::muted));
         lv_obj_set_width(_log, layout.logText.w - 20);
         lv_label_set_long_mode(_log, LV_LABEL_LONG_WRAP);
         lv_obj_update_layout(_logViewport);
@@ -97,9 +97,9 @@ private:
         auto* send = app_ui::makeButton(content(), "Send Test Message", layout.sendButton.x, layout.sendButton.y,
                                         layout.sendButton.w, layout.sendButton.h, app_ui::ButtonKind::Primary);
         lv_obj_add_event_cb(send, AppComMonitor::onSend, LV_EVENT_CLICKED, this);
-        _status = app_ui::makeLabel(content(), "Polling at 4 Hz while this app is open.", layout.statusText.x,
-                                    layout.statusText.y, &lv_font_montserrat_16,
-                                    app_ui::theme::color(app_ui::theme::muted));
+        _status =
+            app_ui::makeLabel(content(), "Polling at 4 Hz while this app is open.", layout.statusText.x,
+                              layout.statusText.y, &lv_font_montserrat_16, app_ui::theme::color(app_ui::theme::muted));
         lv_obj_set_width(_status, layout.statusText.w);
         lv_label_set_long_mode(_status, LV_LABEL_LONG_DOT);
     }
@@ -112,15 +112,21 @@ private:
             const bool followTail = lv_obj_get_scroll_bottom(_logViewport) <= 4;
             lv_label_set_text(_log, _controller.logText().c_str());
             lv_obj_update_layout(_logViewport);
-            if (followTail) lv_obj_scroll_to_y(_logViewport,
-                lv_obj_get_scroll_y(_logViewport) + lv_obj_get_scroll_bottom(_logViewport), LV_ANIM_OFF);
+            if (followTail)
+                lv_obj_scroll_to_y(_logViewport,
+                                   lv_obj_get_scroll_y(_logViewport) + lv_obj_get_scroll_bottom(_logViewport),
+                                   LV_ANIM_OFF);
         }
         if (_status) {
-            if (!sample.error.empty()) lv_label_set_text_fmt(_status, "UART unavailable: %s", sample.error.c_str());
-            else if (!sample.text.empty()) lv_label_set_text_fmt(_status, "%sReceived %u bytes. Last %u bytes; RX dropped %u.",
-                sample.simulated ? "Simulation: " : "", static_cast<unsigned>(sample.bytesRead),
-                static_cast<unsigned>(ComMonitorController::kLogBytes), static_cast<unsigned>(sample.dropped));
-            else if (sample.simulated) lv_label_set_text(_status, "Simulation: showing retained RX log.");
+            if (!sample.error.empty())
+                lv_label_set_text_fmt(_status, "UART unavailable: %s", sample.error.c_str());
+            else if (!sample.text.empty())
+                lv_label_set_text_fmt(_status, "%sReceived %u bytes. Last %u bytes; RX dropped %u.",
+                                      sample.simulated ? "Simulation: " : "", static_cast<unsigned>(sample.bytesRead),
+                                      static_cast<unsigned>(ComMonitorController::kLogBytes),
+                                      static_cast<unsigned>(sample.dropped));
+            else if (sample.simulated)
+                lv_label_set_text(_status, "Simulation: showing retained RX log.");
         }
     }
 
@@ -129,7 +135,8 @@ private:
         audio::play_next_tone_progression();
         const bool accepted = _controller.sendTestMessage();
         if (_status != nullptr) {
-            lv_label_set_text(_status, accepted ? "Queued test message with newline." : "UART unavailable or transmit queue full.");
+            lv_label_set_text(
+                _status, accepted ? "Queued test message with newline." : "UART unavailable or transmit queue full.");
         }
     }
 

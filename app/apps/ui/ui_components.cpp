@@ -18,23 +18,16 @@ lv_obj_t* app_ui::makeLabel(lv_obj_t* parent, const char* text, int x, int y, co
     return label;
 }
 
-lv_obj_t* app_ui::makeWrappedLabel(lv_obj_t* parent, const char* text, int x, int y, const lv_font_t* font, lv_color_t color)
+lv_obj_t* app_ui::makeWrappedLabel(lv_obj_t* parent, const char* text, int x, int y, const lv_font_t* font,
+                                   lv_color_t color)
 {
     auto* label = makeLabel(parent, text, x, y, font, color);
     lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
     return label;
 }
 
-lv_obj_t* app_ui::makeFittedLabel(lv_obj_t* parent,
-                                  const char* text,
-                                  int x,
-                                  int y,
-                                  int w,
-                                  int h,
-                                  const lv_font_t* font,
-                                  lv_color_t color,
-                                  lv_label_long_mode_t longMode,
-                                  lv_text_align_t align)
+lv_obj_t* app_ui::makeFittedLabel(lv_obj_t* parent, const char* text, int x, int y, int w, int h, const lv_font_t* font,
+                                  lv_color_t color, lv_label_long_mode_t longMode, lv_text_align_t align)
 {
     auto* label = makeLabel(parent, text, x, y, font, color);
     lv_obj_set_size(label, w, h);
@@ -90,7 +83,8 @@ lv_obj_t* app_ui::makeScrollableContent(lv_obj_t* parent, int x, int y, int w, i
     return content;
 }
 
-lv_obj_t* app_ui::makeButtonSurface(lv_obj_t* parent, int x, int y, int w, int h, lv_color_t bg, lv_color_t border, int borderWidth, int radius)
+lv_obj_t* app_ui::makeButtonSurface(lv_obj_t* parent, int x, int y, int w, int h, lv_color_t bg, lv_color_t border,
+                                    int borderWidth, int radius)
 {
     auto* button = lv_button_create(parent);
     lv_obj_set_layout(button, LV_LAYOUT_NONE);
@@ -117,17 +111,9 @@ lv_obj_t* app_ui::makeButton(lv_obj_t* parent, const char* text, int x, int y, i
     }
 
     const int labelHeight = h > 28 ? 28 : h;
-    auto* button = makeButtonSurface(parent, x, y, w, h, theme::color(bg), theme::color(bg), 0, 8);
-    makeFittedLabel(button,
-                    text,
-                    12,
-                    (h - labelHeight) / 2,
-                    w - 24,
-                    labelHeight,
-                    &lv_font_montserrat_18,
-                    theme::color(theme::text),
-                    LV_LABEL_LONG_DOT,
-                    LV_TEXT_ALIGN_CENTER);
+    auto* button          = makeButtonSurface(parent, x, y, w, h, theme::color(bg), theme::color(bg), 0, 8);
+    makeFittedLabel(button, text, 12, (h - labelHeight) / 2, w - 24, labelHeight, &lv_font_montserrat_18,
+                    theme::color(theme::text), LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_CENTER);
     return button;
 }
 
@@ -177,7 +163,8 @@ lv_obj_t* app_ui::makeSwitch(lv_obj_t* parent, int x, int y, int w, int h, bool 
     lv_obj_set_size(sw, w, h);
     lv_obj_set_style_bg_color(sw, theme::color(theme::panelAlt), 0);
     lv_obj_set_style_bg_color(sw, theme::color(theme::blue), LV_STATE_CHECKED);
-    const auto checkedIndicator = static_cast<lv_style_selector_t>(LV_PART_INDICATOR) | static_cast<lv_style_selector_t>(LV_STATE_CHECKED);
+    const auto checkedIndicator =
+        static_cast<lv_style_selector_t>(LV_PART_INDICATOR) | static_cast<lv_style_selector_t>(LV_STATE_CHECKED);
     lv_obj_set_style_bg_color(sw, theme::color(theme::blue), checkedIndicator);
     lv_obj_set_style_bg_color(sw, theme::color(theme::text), LV_PART_KNOB);
     lv_obj_set_style_border_color(sw, theme::color(theme::border), 0);
@@ -252,16 +239,8 @@ lv_obj_t* app_ui::makeIconBadge(lv_obj_t* parent, const char* text, int x, int y
     lv_obj_set_style_pad_all(badge, 0, 0);
     lv_obj_clear_flag(badge, LV_OBJ_FLAG_SCROLLABLE);
     const int labelHeight = h > 24 ? 24 : h;
-    makeFittedLabel(badge,
-                    text,
-                    4,
-                    (h - labelHeight) / 2,
-                    w - 8,
-                    labelHeight,
-                    &lv_font_montserrat_18,
-                    theme::color(theme::text),
-                    LV_LABEL_LONG_DOT,
-                    LV_TEXT_ALIGN_CENTER);
+    makeFittedLabel(badge, text, 4, (h - labelHeight) / 2, w - 8, labelHeight, &lv_font_montserrat_18,
+                    theme::color(theme::text), LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_CENTER);
     return badge;
 }
 
@@ -280,7 +259,7 @@ lv_obj_t* app_ui::makeMetricCard(lv_obj_t* parent, const char* title, const char
 
 lv_obj_t* app_ui::makeEmptyState(lv_obj_t* parent, const char* title, const char* detail)
 {
-    auto* panel = makePanel(parent, 0, 0, lv_obj_get_width(parent), lv_obj_get_height(parent));
+    auto* panel      = makePanel(parent, 0, 0, lv_obj_get_width(parent), lv_obj_get_height(parent));
     auto* titleLabel = makeLabel(panel, title, 32, 220, &lv_font_montserrat_24, theme::color(theme::text));
     lv_obj_set_width(titleLabel, lv_obj_get_width(panel) - 64);
     auto* detailLabel = makeLabel(panel, detail, 32, 270, &lv_font_montserrat_18, theme::color(theme::muted));

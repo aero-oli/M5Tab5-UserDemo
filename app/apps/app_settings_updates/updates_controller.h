@@ -19,9 +19,9 @@ struct UpdatesSnapshot {
     std::string stateText;
     std::string progressText;
     bool canInstall = false;
-    bool canCancel = false;
-    bool canReboot = false;
-    bool busy = false;
+    bool canCancel  = false;
+    bool canReboot  = false;
+    bool busy       = false;
 };
 
 struct UpdatesCallbacks {

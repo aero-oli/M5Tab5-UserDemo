@@ -53,7 +53,7 @@ static void test_local_child_bounds_use_parent_dimensions()
 
 static void test_shared_columns_support_a_flexible_middle_region()
 {
-    auto safe = app_ui::safeContentRect();
+    auto safe    = app_ui::safeContentRect();
     auto columns = app_ui::makeColumns(safe, {210, 0, 318}, 20);
 
     assert(columns.size() == 3);

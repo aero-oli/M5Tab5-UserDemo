@@ -11,7 +11,7 @@ void test_whole_message_bounds_and_rx_retention()
 {
     State state;
     assert(state.queueTx(std::string(State::kCapacity - 2, 'a'), false));
-    assert(!state.queueTx("bc", true)); // No partial message or newline admitted.
+    assert(!state.queueTx("bc", true));  // No partial message or newline admitted.
     assert(state.txQueue.size() == State::kCapacity - 2);
     assert(state.queueTx("b", true));
     assert(!state.queueTx("c", false));
@@ -34,10 +34,10 @@ void test_partial_and_zero_writes_preserve_order()
     hal::UartMonitorWorker worker(state);
     assert(state->queueTx("abcdef", false));
     std::string output;
-    int writes = 0;
-    const auto read = [](uint8_t*, size_t) { return 0; };
+    int writes       = 0;
+    const auto read  = [](uint8_t*, size_t) { return 0; };
     const auto write = [&](const uint8_t* bytes, size_t size) {
-        if (++writes == 1) return 0; // FIFO backpressure must not discard pending data.
+        if (++writes == 1) return 0;  // FIFO backpressure must not discard pending data.
         const auto count = std::min<size_t>(2, size);
         output.append(reinterpret_cast<const char*>(bytes), count);
         return static_cast<int>(count);
@@ -53,7 +53,7 @@ void test_partial_and_zero_writes_preserve_order()
 
 void test_blocked_io_does_not_lock_snapshots_and_cleanup_precedes_exit()
 {
-    auto state = std::make_shared<State>();
+    auto state           = std::make_shared<State>();
     state->workerRunning = state->driverActive = true;
     assert(state->queueTx("before", false));
     std::weak_ptr<State> lifetime = state;
@@ -61,11 +61,12 @@ void test_blocked_io_does_not_lock_snapshots_and_cleanup_precedes_exit()
     auto writeGate = releaseWrite.get_future().share(), cleanupGate = releaseCleanup.get_future().share();
     auto job = std::async(std::launch::async, [owned = state, &writing, writeGate, &cleaning, cleanupGate] {
         hal::UartMonitorWorker worker(owned);
-        worker.poll([](uint8_t*, size_t) { return 0; }, [&](const uint8_t*, size_t size) {
-            writing.set_value();
-            writeGate.wait();
-            return static_cast<int>(size);
-        });
+        worker.poll([](uint8_t*, size_t) { return 0; },
+                    [&](const uint8_t*, size_t size) {
+                        writing.set_value();
+                        writeGate.wait();
+                        return static_cast<int>(size);
+                    });
         cleaning.set_value();
         cleanupGate.wait();
         owned->finishWorker(true);
@@ -83,10 +84,10 @@ void test_blocked_io_does_not_lock_snapshots_and_cleanup_precedes_exit()
     assert(!state->waitForWorker(1));
     releaseWrite.set_value();
     assert(cleaning.get_future().wait_for(seconds(2)) == std::future_status::ready);
-    assert(!state->waitForWorker(1)); // Finished IO is not finished driver cleanup.
+    assert(!state->waitForWorker(1));  // Finished IO is not finished driver cleanup.
     auto observer = state;
     state.reset();
-    assert(!lifetime.expired()); // Releasing the HAL owner cannot destroy worker storage.
+    assert(!lifetime.expired());  // Releasing the HAL owner cannot destroy worker storage.
     releaseCleanup.set_value();
     assert(job.wait_for(seconds(2)) == std::future_status::ready);
     job.get();
@@ -112,7 +113,10 @@ void test_desktop_echo_is_immediate_bounded_and_owned()
     State state;
     assert(state.echo("test", true));
     std::string text;
-    while (!state.rxQueue.empty()) { text.push_back(static_cast<char>(state.rxQueue.front())); state.rxQueue.pop(); }
+    while (!state.rxQueue.empty()) {
+        text.push_back(static_cast<char>(state.rxQueue.front()));
+        state.rxQueue.pop();
+    }
     assert(text == "[simulated echo] test\n" && state.simulated);
     assert(state.echo(std::string(State::kCapacity, 'x'), false));
     assert(state.rxQueue.size() == State::kCapacity && state.rxDropped > 0);

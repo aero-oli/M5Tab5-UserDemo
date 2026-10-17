@@ -104,13 +104,13 @@ public:
 
     /* ---------------------------------- Power --------------------------------- */
     struct PMData_t {
-        float busVoltage   = 0.0f;
-        float busPower     = 0.0f;
-        float shuntVoltage = 0.0f;
-        float shuntCurrent = 0.0f;
-        bool valid = false;
-        bool hasSample = false;
-        bool simulated = false;
+        float busVoltage     = 0.0f;
+        float busPower       = 0.0f;
+        float shuntVoltage   = 0.0f;
+        float shuntCurrent   = 0.0f;
+        bool valid           = false;
+        bool hasSample       = false;
+        bool simulated       = false;
         uint32_t sampledAtMs = 0;
         std::string error;
     };
@@ -156,8 +156,14 @@ public:
     {
         return {false, false, false, "Power control unavailable"};
     }
-    virtual bool isDisplayAsleep() { return false; }
-    virtual bool wakeDisplay() { return false; }
+    virtual bool isDisplayAsleep()
+    {
+        return false;
+    }
+    virtual bool wakeDisplay()
+    {
+        return false;
+    }
 
 protected:
     std::mutex _powerMonitorMutex;
@@ -174,19 +180,19 @@ protected:
         _powerMonitorData.valid = false;
         _powerMonitorData.error = error;
     }
-public:
 
+public:
     /* ----------------------------------- IMU ---------------------------------- */
     struct IMUData_t {
-        float accelX = 0.0f;
-        float accelY = 0.0f;
-        float accelZ = 0.0f;
-        float gyroX  = 0.0f;
-        float gyroY  = 0.0f;
-        float gyroZ  = 0.0f;
-        bool valid = false;
-        bool hasSample = false;
-        bool simulated = false;
+        float accelX         = 0.0f;
+        float accelY         = 0.0f;
+        float accelZ         = 0.0f;
+        float gyroX          = 0.0f;
+        float gyroY          = 0.0f;
+        float gyroZ          = 0.0f;
+        bool valid           = false;
+        bool hasSample       = false;
+        bool simulated       = false;
         uint32_t sampledAtMs = 0;
         std::string error;
     };
@@ -218,29 +224,43 @@ protected:
         _imuData.valid = false;
         _imuData.error = error;
     }
-public:
 
+public:
     /* ----------------------------------- RTC ---------------------------------- */
     struct RtcData {
-        tm time = {};
-        bool valid = false;
-        bool hasSample = false;
-        bool simulated = false;
+        tm time                  = {};
+        bool valid               = false;
+        bool hasSample           = false;
+        bool simulated           = false;
         bool needsInitialization = false;
-        uint32_t sampledAtMs = 0;
-        std::string error = "RTC unavailable";
+        uint32_t sampledAtMs     = 0;
+        std::string error        = "RTC unavailable";
     };
     RtcData getRtcData() const
     {
         std::lock_guard<std::mutex> lock(_rtcMutex);
         return _rtcData;
     }
-    virtual void updateRtcData() {} // Worker-only I/O; UI uses getRtcData().
-    virtual bool setRtcTimeChecked(const tm& time, bool initialize = false) { return false; }
+    virtual void updateRtcData()
+    {
+    }  // Worker-only I/O; UI uses getRtcData().
+    virtual bool setRtcTimeChecked(const tm& time, bool initialize = false)
+    {
+        return false;
+    }
     // Compatibility read is cache-only; compatibility write is worker-only.
-    virtual void getRtcTime(tm* time) { if (time) *time = getRtcData().time; }
-    virtual void setRtcTime(tm time) { setRtcTimeChecked(time); }
-    virtual void clearRtcIrq() {}
+    virtual void getRtcTime(tm* time)
+    {
+        if (time) *time = getRtcData().time;
+    }
+    virtual void setRtcTime(tm time)
+    {
+        setRtcTimeChecked(time);
+    }
+    virtual void clearRtcIrq()
+    {
+    }
+
 protected:
     mutable std::mutex _rtcMutex;
     RtcData _rtcData;
@@ -250,8 +270,8 @@ protected:
         std::lock_guard<std::mutex> lock(_rtcMutex);
         _rtcData = data;
     }
-public:
 
+public:
     /* --------------------------------- Camera --------------------------------- */
     enum class CameraState {
         Unavailable,
@@ -265,9 +285,9 @@ public:
         CameraState state = CameraState::Unavailable;
         std::string lastError;
         uint32_t frames = 0;
-        int width = 0;
-        int height = 0;
-        bool simulated = false;
+        int width       = 0;
+        int height      = 0;
+        bool simulated  = false;
     };
     virtual bool startCameraCapture(lv_obj_t* imgCanvas)
     {
@@ -282,7 +302,7 @@ public:
     virtual bool shutdownCamera(uint32_t timeoutMs)
     {
         stopCameraCapture();
-        return true; // Base/synchronous platforms own no independent camera task.
+        return true;  // Base/synchronous platforms own no independent camera task.
     }
     virtual CameraStatus cameraGetStatus()
     {
@@ -315,15 +335,25 @@ public:
     enum class AudioPhase { Idle, Starting, Recording, Playing, Cancelling, Failed };
     struct AudioStatus {
         AudioOperation operation = AudioOperation::None;
-        AudioPhase phase = AudioPhase::Idle;
-        bool busy = false;
+        AudioPhase phase         = AudioPhase::Idle;
+        bool busy                = false;
         std::string lastError;
     };
-    virtual AudioStatus audioGetStatus() { return {}; }
+    virtual AudioStatus audioGetStatus()
+    {
+        return {};
+    }
     // Nonblocking cancellation. Draining also closes admission until resumeAudio().
-    virtual void audioCancel() {}
-    virtual bool stopAudioAndWait(uint32_t timeoutMs) { return true; }
-    virtual void resumeAudio() {}
+    virtual void audioCancel()
+    {
+    }
+    virtual bool stopAudioAndWait(uint32_t timeoutMs)
+    {
+        return true;
+    }
+    virtual void resumeAudio()
+    {
+    }
 
     // [MIC-L, AEC, MIC-R, MIC-HP]
     virtual void audioRecord(std::vector<int16_t>& data, uint16_t durationMs, float gain = 80.0f)
@@ -405,16 +435,16 @@ public:
     };
     struct WifiNetwork {
         std::string ssid;
-        int rssi = 0;
-        bool secure = true;
+        int rssi        = 0;
+        bool secure     = true;
         uint8_t channel = 0;
     };
     struct WifiStatus {
-        WifiMode mode = WifiMode::Off;
+        WifiMode mode             = WifiMode::Off;
         WifiConnectionState state = WifiConnectionState::Idle;
         std::string ssid;
         std::string ipAddress;
-        int rssi = 0;
+        int rssi               = 0;
         bool extAntennaEnabled = false;
         std::string lastError;
     };
@@ -429,19 +459,27 @@ public:
         Failed,
     };
     struct OtaStatus {
-        OtaState state = OtaState::Idle;
-        int progress = 0;
-        bool progressKnown = false;
-        bool canCancel = false;
-        bool simulated = false;
+        OtaState state       = OtaState::Idle;
+        int progress         = 0;
+        bool progressKnown   = false;
+        bool canCancel       = false;
+        bool simulated       = false;
         size_t bytesReceived = 0;
-        size_t totalBytes = 0;
+        size_t totalBytes    = 0;
         std::string lastError;
         bool rebootRequired = false;
     };
-    virtual bool wifiRestoreSavedConnection() { return false; }
-    virtual bool stopNetworkAndWait(uint32_t timeoutMs) { return true; }
-    virtual void resumeNetwork() {}
+    virtual bool wifiRestoreSavedConnection()
+    {
+        return false;
+    }
+    virtual bool stopNetworkAndWait(uint32_t timeoutMs)
+    {
+        return true;
+    }
+    virtual void resumeNetwork()
+    {
+    }
     virtual WifiStatus wifiGetStatus()
     {
         return {};
@@ -521,15 +559,15 @@ public:
 
     /* -------------------------------- Interface ------------------------------- */
     struct InterfaceData {
-        bool usbC = false;
-        bool usbA = false;
-        bool headphone = false;
-        bool usbCKnown = false;
-        bool usbAKnown = false;
-        bool headphoneKnown = false;
-        bool valid = false;
-        bool hasSample = false;
-        bool simulated = false;
+        bool usbC            = false;
+        bool usbA            = false;
+        bool headphone       = false;
+        bool usbCKnown       = false;
+        bool usbAKnown       = false;
+        bool headphoneKnown  = false;
+        bool valid           = false;
+        bool hasSample       = false;
+        bool simulated       = false;
         uint32_t sampledAtMs = 0;
         std::string error;
     };
@@ -539,7 +577,11 @@ public:
         return _interfaceData;
     }
     // Physical reads belong to a registered background sampler, never rendering.
-    virtual void updateInterfaceData() { publishInterfaceError("Interface status unavailable"); }
+    virtual void updateInterfaceData()
+    {
+        publishInterfaceError("Interface status unavailable");
+    }
+
 protected:
     std::mutex _interfaceIoMutex;
     void publishInterfaceData(const InterfaceData& data)
@@ -553,9 +595,11 @@ protected:
         _interfaceData.valid = false;
         _interfaceData.error = error;
     }
+
 private:
     std::mutex _interfaceMutex;
     InterfaceData _interfaceData;
+
 public:
     virtual bool usbCDetect()
     {
@@ -615,8 +659,10 @@ public:
 
     /* ------------------------------ UART monitor ------------------------------ */
     using UartMonitorData_t = UartMonitorState;
+
 protected:
     std::shared_ptr<UartMonitorData_t> _uartMonitorState = std::make_shared<UartMonitorData_t>();
+
 public:
     UartMonitorData_t& uartMonitorData = *_uartMonitorState;
     virtual bool uartMonitorSend(std::string msg, bool newLine = true)
@@ -628,7 +674,6 @@ public:
         _uartMonitorState->requestStop();
         return _uartMonitorState->waitForWorker(timeoutMs);
     }
-
 };
 
 /**

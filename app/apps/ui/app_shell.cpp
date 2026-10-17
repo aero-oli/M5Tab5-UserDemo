@@ -12,7 +12,10 @@
 
 using namespace app_ui;
 
-AppShell::AppShell(std::string title, std::function<void()> onBack) : _title(std::move(title)), _onBack(std::move(onBack)) {}
+AppShell::AppShell(std::string title, std::function<void()> onBack)
+    : _title(std::move(title)), _onBack(std::move(onBack))
+{
+}
 
 AppShell::~AppShell()
 {
@@ -24,7 +27,7 @@ void AppShell::init()
 {
     LvglLockGuard lock;
     const auto layout = makeAppShellLayout();
-    _root = makeScreenRoot(GetHAL()->getDisplayWidth(), GetHAL()->getDisplayHeight());
+    _root             = makeScreenRoot(GetHAL()->getDisplayWidth(), GetHAL()->getDisplayHeight());
 
     _header = lv_obj_create(_root);
     lv_obj_set_pos(_header, layout.header.x, layout.header.y);
@@ -46,8 +49,7 @@ void AppShell::init()
                 shell->_onBack();
             }
         },
-        LV_EVENT_CLICKED,
-        this);
+        LV_EVENT_CLICKED, this);
 
     _titleLabel = makeLabel(_header, _title.c_str(), layout.title.x, layout.title.y, &lv_font_montserrat_24,
                             theme::color(theme::text));
@@ -95,7 +97,7 @@ void AppShell::setStatusChips(const std::vector<std::string>& chips)
         return;
     }
     lv_obj_clean(_chipArea);
-    const auto layout = makeAppShellLayout();
+    const auto layout  = makeAppShellLayout();
     const int maxChips = maxAppShellChips(layout);
     for (int i = 0; i < static_cast<int>(chips.size()); ++i) {
         if (i >= maxChips) {
@@ -111,14 +113,16 @@ void AppShell::setHeaderAction(const std::string& label, std::function<void()> a
     _headerAction = std::move(action);
     lv_obj_clean(_chipArea);
     const auto layout = makeAppShellLayout();
-    auto* button = makeButton(_chipArea, label.c_str(), 0, 0, layout.chipArea.w,
-                              layout.chipArea.h, ButtonKind::Danger);
-    lv_obj_add_event_cb(button, [](lv_event_t* event) {
-        auto* shell = static_cast<AppShell*>(lv_event_get_user_data(event));
-        if (shell->_editedField != nullptr) shell->closeTextEditor(false);
-        shell->dismissConfirmation();
-        if (shell->_headerAction) shell->_headerAction();
-    }, LV_EVENT_CLICKED, this);
+    auto* button = makeButton(_chipArea, label.c_str(), 0, 0, layout.chipArea.w, layout.chipArea.h, ButtonKind::Danger);
+    lv_obj_add_event_cb(
+        button,
+        [](lv_event_t* event) {
+            auto* shell = static_cast<AppShell*>(lv_event_get_user_data(event));
+            if (shell->_editedField != nullptr) shell->closeTextEditor(false);
+            shell->dismissConfirmation();
+            if (shell->_headerAction) shell->_headerAction();
+        },
+        LV_EVENT_CLICKED, this);
 }
 
 void AppShell::setContentScrollable(bool scrollable)
@@ -138,10 +142,13 @@ void AppShell::setContentScrollable(bool scrollable)
 
 void AppShell::bindTextInput(lv_obj_t* field)
 {
-    lv_obj_add_event_cb(field, [](lv_event_t* event) {
-        auto* shell = static_cast<AppShell*>(lv_event_get_user_data(event));
-        shell->openTextEditor(static_cast<lv_obj_t*>(lv_event_get_target(event)));
-    }, LV_EVENT_CLICKED, this);
+    lv_obj_add_event_cb(
+        field,
+        [](lv_event_t* event) {
+            auto* shell = static_cast<AppShell*>(lv_event_get_user_data(event));
+            shell->openTextEditor(static_cast<lv_obj_t*>(lv_event_get_target(event)));
+        },
+        LV_EVENT_CLICKED, this);
 }
 
 void AppShell::confirm(std::string title, std::string message, std::function<void()> onConfirm,
@@ -150,27 +157,31 @@ void AppShell::confirm(std::string title, std::string message, std::function<voi
     LvglLockGuard lock;
     if (_confirmation == nullptr) {
         const auto safe = makeAppShellLayout().content;
-        _confirmation = makePanel(_root, safe.x, safe.y, safe.w, safe.h);
+        _confirmation   = makePanel(_root, safe.x, safe.y, safe.w, safe.h);
         lv_obj_set_style_pad_all(_confirmation, 0, 0);
-        _confirmationTitle = makeFittedLabel(_confirmation, "", 32, 32, safe.w - 64, 40,
-            &lv_font_montserrat_28, theme::color(theme::text), LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_LEFT);
-        _confirmationMessage = makeFittedLabel(_confirmation, "", 32, 104, safe.w - 64, 220,
-            &lv_font_montserrat_20, theme::color(theme::amber), LV_LABEL_LONG_WRAP, LV_TEXT_ALIGN_LEFT);
-        auto* cancel = makeButton(_confirmation, "Cancel", 32, safe.h - 88, 180, 56, ButtonKind::Secondary);
+        _confirmationTitle   = makeFittedLabel(_confirmation, "", 32, 32, safe.w - 64, 40, &lv_font_montserrat_28,
+                                               theme::color(theme::text), LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_LEFT);
+        _confirmationMessage = makeFittedLabel(_confirmation, "", 32, 104, safe.w - 64, 220, &lv_font_montserrat_20,
+                                               theme::color(theme::amber), LV_LABEL_LONG_WRAP, LV_TEXT_ALIGN_LEFT);
+        auto* cancel         = makeButton(_confirmation, "Cancel", 32, safe.h - 88, 180, 56, ButtonKind::Secondary);
         auto* accept = makeButton(_confirmation, "Confirm", safe.w - 212, safe.h - 88, 180, 56, ButtonKind::Danger);
-        lv_obj_add_event_cb(cancel, [](lv_event_t* event) {
-            static_cast<AppShell*>(lv_event_get_user_data(event))->dismissConfirmation();
-        }, LV_EVENT_CLICKED, this);
-        lv_obj_add_event_cb(accept, [](lv_event_t* event) {
-            auto* shell = static_cast<AppShell*>(lv_event_get_user_data(event));
-            auto callback = std::move(shell->_onConfirm);
-            shell->_onCancel = {};
-            shell->dismissConfirmation();
-            if (callback) callback();
-        }, LV_EVENT_CLICKED, this);
+        lv_obj_add_event_cb(
+            cancel,
+            [](lv_event_t* event) { static_cast<AppShell*>(lv_event_get_user_data(event))->dismissConfirmation(); },
+            LV_EVENT_CLICKED, this);
+        lv_obj_add_event_cb(
+            accept,
+            [](lv_event_t* event) {
+                auto* shell      = static_cast<AppShell*>(lv_event_get_user_data(event));
+                auto callback    = std::move(shell->_onConfirm);
+                shell->_onCancel = {};
+                shell->dismissConfirmation();
+                if (callback) callback();
+            },
+            LV_EVENT_CLICKED, this);
     }
     _onConfirm = std::move(onConfirm);
-    _onCancel = std::move(onCancel);
+    _onCancel  = std::move(onCancel);
     lv_label_set_text(_confirmationTitle, title.c_str());
     lv_label_set_text(_confirmationMessage, message.c_str());
     lv_obj_add_flag(_content, LV_OBJ_FLAG_HIDDEN);
@@ -183,7 +194,7 @@ bool AppShell::dismissConfirmation()
     // Keep the dialog objects alive until nested LVGL event dispatch has unwound.
     lv_obj_add_flag(_confirmation, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(_content, LV_OBJ_FLAG_HIDDEN);
-    _onConfirm = {};
+    _onConfirm    = {};
     auto callback = std::move(_onCancel);
     if (callback) callback();
     return true;
@@ -195,11 +206,10 @@ void AppShell::openTextEditor(lv_obj_t* field)
     if (_editor == nullptr) {
         _editor = makePanel(_root, layout.content.x, layout.content.y, layout.content.w, layout.content.h);
         lv_obj_set_style_pad_all(_editor, 0, 0);
-        _editorTitle = makeFittedLabel(_editor, "", 24, 20, layout.content.w - 48, 32,
-                                      &lv_font_montserrat_24, theme::color(theme::text),
-                                      LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_LEFT);
-        _draft = makeTextArea(_editor, "", 24, 72, layout.content.w - 48, 64);
-        _keyboard = makeKeyboard(_editor, 16, 200, layout.content.w - 32, layout.content.h - 216);
+        _editorTitle       = makeFittedLabel(_editor, "", 24, 20, layout.content.w - 48, 32, &lv_font_montserrat_24,
+                                             theme::color(theme::text), LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_LEFT);
+        _draft             = makeTextArea(_editor, "", 24, 72, layout.content.w - 48, 64);
+        _keyboard          = makeKeyboard(_editor, 16, 200, layout.content.w - 32, layout.content.h - 216);
         auto onEditorEvent = [](lv_event_t* event) {
             const auto code = lv_event_get_code(event);
             if (code == LV_EVENT_READY || code == LV_EVENT_CANCEL) {
@@ -210,7 +220,7 @@ void AppShell::openTextEditor(lv_obj_t* field)
         lv_obj_add_event_cb(_keyboard, onEditorEvent, LV_EVENT_ALL, this);
         lv_obj_add_event_cb(_draft, onEditorEvent, LV_EVENT_READY, this);
     }
-    _editedField = field;
+    _editedField            = field;
     const char* placeholder = lv_textarea_get_placeholder_text(field);
     lv_label_set_text(_editorTitle, placeholder && placeholder[0] ? placeholder : _title.c_str());
     lv_textarea_set_password_mode(_draft, lv_textarea_get_password_mode(field));

@@ -17,7 +17,7 @@
 #include <accel_gyro_bmi270.h>
 #include <hal/power_recovery.h>
 
-static const std::string _tag = "power";
+static const std::string _tag   = "power";
 HalEsp32* HalEsp32::_sleepOwner = nullptr;
 
 void HalEsp32::updatePowerMonitorData()
@@ -29,7 +29,7 @@ void HalEsp32::updatePowerMonitorData()
         return;
     }
     data.valid = data.hasSample = true;
-    data.sampledAtMs = millis();
+    data.sampledAtMs            = millis();
     publishPowerMonitorData(data);
 }
 
@@ -94,7 +94,10 @@ HalEsp32::~HalEsp32()
     lvglUnlock();
 }
 
-bool HalEsp32::isDisplayAsleep() { return _displayAsleep.load(); }
+bool HalEsp32::isDisplayAsleep()
+{
+    return _displayAsleep.load();
+}
 
 bool HalEsp32::wakeDisplay()
 {
@@ -112,9 +115,12 @@ bool HalEsp32::wakeDisplay()
 void HalEsp32::readSleepTouch(lv_indev_t* indev, lv_indev_data_t* data)
 {
     auto* hal = _sleepOwner;
-    if (!hal) { data->state = LV_INDEV_STATE_RELEASED; return; }
+    if (!hal) {
+        data->state = LV_INDEV_STATE_RELEASED;
+        return;
+    }
     hal->_touchReader(indev, data);
-    const bool pressed = data->state == LV_INDEV_STATE_PRESSED;
+    const bool pressed  = data->state == LV_INDEV_STATE_PRESSED;
     const auto filtered = hal->_displaySleepGate.filter(pressed);
     if (filtered.wake && !hal->wakeDisplay()) hal->_displaySleepGate.arm(true);
     if (filtered.consume) data->state = LV_INDEV_STATE_RELEASED;
@@ -143,7 +149,8 @@ hal::PowerResult HalEsp32::performPowerAction(hal::PowerAction action, uint16_t 
         return {true, true, false, "Display off"};
     }
     if (action != hal::PowerAction::PowerOff && action != hal::PowerAction::SleepShake &&
-        action != hal::PowerAction::SleepRtc) return {false, false, false, "Unknown power action"};
+        action != hal::PowerAction::SleepRtc)
+        return {false, false, false, "Unknown power action"};
     if (_displayAsleep.load()) return {false, true, false, "Wake display before shutdown"};
     if (action == hal::PowerAction::SleepRtc && (rtcMinutes < 1 || rtcMinutes > 60))
         return {false, false, false, "Wake interval must be 1-60 minutes"};
@@ -158,29 +165,28 @@ hal::PowerResult HalEsp32::performPowerAction(hal::PowerAction action, uint16_t 
     modules::HalI2cDevice rtcDevice(hal::ModuleBus::MBus, 0x32);
     rtc::Rx8130WakeTimer timer(rtcDevice);
     auto failed = [&](const std::string& message) {
-        auto result = hal::recoverPowerFailure(hal::PowerResult{false, false, false, message},
-            [&] { return timer.cancel(); }, [&] { return accel_gyro_bmi270_restore_normal(); });
-        resumeAudio(); // Reopen admission only after preparation has unwound.
+        auto result = hal::recoverPowerFailure(
+            hal::PowerResult{false, false, false, message}, [&] { return timer.cancel(); },
+            [&] { return accel_gyro_bmi270_restore_normal(); });
+        resumeAudio();  // Reopen admission only after preparation has unwound.
         resumeNetwork();
         return result;
     };
     if (!timer.cancel()) return failed(timer.error());
-    if (accel_gyro_bmi270_init(bsp_i2c_get_handle()) != ESP_OK)
-        return failed("IMU initialization failed");
+    if (accel_gyro_bmi270_init(bsp_i2c_get_handle()) != ESP_OK) return failed("IMU initialization failed");
     if (!accel_gyro_bmi270_disable_wake_irq()) return failed("Motion wake disable not verified");
     if (action == hal::PowerAction::SleepShake && !accel_gyro_bmi270_motion_irq())
         return failed("Motion wake configuration failed");
 
     // Cancel every codec user and close admission until poweroff or recovery.
     if (!stopAudioAndWait(2000)) return failed("Audio did not stop; shutdown cancelled");
-    if (action == hal::PowerAction::SleepRtc && !timer.arm(rtcMinutes * 60))
-        return failed(timer.error());
+    if (action == hal::PowerAction::SleepRtc && !timer.arm(rtcMinutes * 60)) return failed(timer.error());
     uint8_t brightness = 0;
-    bool dimmed = false;
+    bool dimmed        = false;
     {
         LvglLockGuard lock;
         brightness = getDisplayBrightness();
-        dimmed = bsp_display_brightness_set(0) == ESP_OK;
+        dimmed     = bsp_display_brightness_set(0) == ESP_OK;
         if (dimmed) _current_lcd_brightness = 0;
     }
     if (!dimmed) return failed("Display off failed; shutdown cancelled");

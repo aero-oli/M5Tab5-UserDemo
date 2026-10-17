@@ -30,14 +30,13 @@ enum class ActionId {
 
 struct ActionBinding {
     class AppDisplaySound* app = nullptr;
-    ActionId id = ActionId::BrightnessDown;
+    ActionId id                = ActionId::BrightnessDown;
 };
 
 class AppDisplaySound : public mooncake::AppAbility {
 public:
     AppDisplaySound()
-        : _controller([] { return GetHAL()->getDisplayBrightness(); },
-                      [] { return GetHAL()->getSpeakerVolume(); },
+        : _controller([] { return GetHAL()->getDisplayBrightness(); }, [] { return GetHAL()->getSpeakerVolume(); },
                       [](uint8_t value) { GetHAL()->setDisplayBrightness(value); },
                       [](uint8_t value) { GetHAL()->setSpeakerVolume(value); })
     {
@@ -72,8 +71,8 @@ private:
     DisplaySoundController _controller;
     std::unique_ptr<app_ui::AppShell> _shell;
     std::vector<std::unique_ptr<ActionBinding>> _actions;
-    lv_obj_t* _brightness = nullptr;
-    lv_obj_t* _volume = nullptr;
+    lv_obj_t* _brightness  = nullptr;
+    lv_obj_t* _volume      = nullptr;
     uint32_t _lastUpdateMs = 0;
 
     lv_obj_t* content() const
@@ -85,16 +84,15 @@ private:
     {
         LvglLockGuard lock;
         const auto layout = makeDisplaySoundLayout();
-        auto* description = app_ui::makeLabel(content(), "Device preference controls for screen brightness and speaker volume.",
-                                              layout.description.x, layout.description.y, &lv_font_montserrat_20,
-                                              app_ui::theme::color(app_ui::theme::muted));
+        auto* description = app_ui::makeLabel(
+            content(), "Device preference controls for screen brightness and speaker volume.", layout.description.x,
+            layout.description.y, &lv_font_montserrat_20, app_ui::theme::color(app_ui::theme::muted));
         lv_obj_set_width(description, layout.description.w);
         lv_label_set_long_mode(description, LV_LABEL_LONG_DOT);
         _brightness = app_ui::makeMetricCard(content(), "Display Brightness", "--", layout.brightnessCard.x,
-                                             layout.brightnessCard.y, layout.brightnessCard.w,
-                                             layout.brightnessCard.h);
-        _volume = app_ui::makeMetricCard(content(), "Speaker Volume", "--", layout.volumeCard.x,
-                                         layout.volumeCard.y, layout.volumeCard.w, layout.volumeCard.h);
+                                             layout.brightnessCard.y, layout.brightnessCard.w, layout.brightnessCard.h);
+        _volume = app_ui::makeMetricCard(content(), "Speaker Volume", "--", layout.volumeCard.x, layout.volumeCard.y,
+                                         layout.volumeCard.w, layout.volumeCard.h);
         bindButton(layout, 0, "Brightness -", app_ui::ButtonKind::Secondary, ActionId::BrightnessDown);
         bindButton(layout, 1, "Brightness +", app_ui::ButtonKind::Primary, ActionId::BrightnessUp);
         bindButton(layout, 2, "Volume -", app_ui::ButtonKind::Secondary, ActionId::VolumeDown);
@@ -102,9 +100,9 @@ private:
 
         auto* panel = app_ui::makePanel(content(), layout.infoPanel.x, layout.infoPanel.y, layout.infoPanel.w,
                                         layout.infoPanel.h);
-        auto* info = app_ui::makeLabel(panel, "Brightness: 5-100%. Volume: 0-100%. Use Power > Screen Off for touch wake.",
-                                       layout.infoText.x, layout.infoText.y, &lv_font_montserrat_18,
-                                       app_ui::theme::color(app_ui::theme::muted));
+        auto* info  = app_ui::makeLabel(
+             panel, "Brightness: 5-100%. Volume: 0-100%. Use Power > Screen Off for touch wake.", layout.infoText.x,
+             layout.infoText.y, &lv_font_montserrat_18, app_ui::theme::color(app_ui::theme::muted));
         lv_obj_set_width(info, layout.infoText.w);
         lv_label_set_long_mode(info, LV_LABEL_LONG_WRAP);
         refresh();
@@ -112,11 +110,11 @@ private:
 
     void bindButton(const DisplaySoundLayout& layout, int index, const char* text, app_ui::ButtonKind kind, ActionId id)
     {
-        auto binding = std::make_unique<ActionBinding>();
-        binding->app = this;
-        binding->id = id;
+        auto binding    = std::make_unique<ActionBinding>();
+        binding->app    = this;
+        binding->id     = id;
         const auto rect = displaySoundActionRect(layout, index);
-        auto* button = app_ui::makeButton(content(), text, rect.x, rect.y, rect.w, rect.h, kind);
+        auto* button    = app_ui::makeButton(content(), text, rect.x, rect.y, rect.w, rect.h, kind);
         lv_obj_add_event_cb(button, AppDisplaySound::onAction, LV_EVENT_CLICKED, binding.get());
         _actions.push_back(std::move(binding));
     }
@@ -144,7 +142,8 @@ private:
     void refresh()
     {
         const auto snapshot = _controller.read();
-        setMetric(_brightness, "Display Brightness", DisplaySoundController::formatPercent(snapshot.brightness).c_str());
+        setMetric(_brightness, "Display Brightness",
+                  DisplaySoundController::formatPercent(snapshot.brightness).c_str());
         setMetric(_volume, "Speaker Volume", DisplaySoundController::formatPercent(snapshot.volume).c_str());
     }
 

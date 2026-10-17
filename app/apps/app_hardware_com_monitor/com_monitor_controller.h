@@ -15,8 +15,8 @@ namespace app_hardware_com_monitor {
 struct ComMonitorSample {
     std::string text;
     size_t bytesRead = 0;
-    size_t dropped = 0;
-    bool simulated = false;
+    size_t dropped   = 0;
+    bool simulated   = false;
     std::string error;
 };
 
@@ -29,7 +29,10 @@ public:
 
     ComMonitorSample drainRx(size_t maxBytes = 800);
     bool sendTestMessage();
-    const std::string& logText() const { return _logText; }
+    const std::string& logText() const
+    {
+        return _logText;
+    }
     static constexpr size_t kLogBytes = 2000;
 
 private:

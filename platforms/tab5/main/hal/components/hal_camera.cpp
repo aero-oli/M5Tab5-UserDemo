@@ -29,9 +29,9 @@
 
 namespace {
 
-using State = hal::HalBase::CameraState;
-constexpr const char* kTag = "camera";
-constexpr int kBufferCount = 2;
+using State                       = hal::HalBase::CameraState;
+constexpr const char* kTag        = "camera";
+constexpr int kBufferCount        = 2;
 constexpr int64_t kFrameTimeoutUs = 2000000;
 constexpr size_t kBufferAlignment = 128;
 
@@ -41,12 +41,12 @@ bool s_shutdown = false;
 hal::HalBase::CameraStatus s_status{State::Stopped, {}, 0, 0, 0, false};
 TaskHandle_t s_task = nullptr;
 // Target access always takes the display lock before s_mutex.
-lv_obj_t* s_canvas = nullptr;
-bool s_stop_requested = false;
-bool s_waiting_for_frame = false;
-bool s_frame_timed_out = false;
+lv_obj_t* s_canvas              = nullptr;
+bool s_stop_requested           = false;
+bool s_waiting_for_frame        = false;
+bool s_frame_timed_out          = false;
 int64_t s_frame_wait_started_us = 0;
-bool s_video_initialized = false;
+bool s_video_initialized        = false;
 
 struct CaptureRequest {
     int width;
@@ -95,7 +95,9 @@ void frame_watchdog(void*)
 
 class CaptureResources {
 public:
-    CaptureResources(std::string& error, bool& cleanupFailed) : _error(error), _cleanupFailed(cleanupFailed) {}
+    CaptureResources(std::string& error, bool& cleanupFailed) : _error(error), _cleanupFailed(cleanupFailed)
+    {
+    }
 
     ~CaptureResources()
     {
@@ -106,17 +108,20 @@ public:
             }
         }
         if (_fd >= 0) {
-            const bool released = hal::releaseCameraCapture(_startAttempted, [&] {
-                // STREAMON may have failed after enabling DMA; STREAMOFF must
-                // succeed even in that case before close may destroy its buffers.
-                int type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-                return ioctl(_fd, VIDIOC_STREAMOFF, &type) == 0;
-            }, [&] {
-                for (size_t i = 0; i < _captureBuffers.size(); ++i) {
-                    if (_captureBuffers[i] != nullptr) munmap(_captureBuffers[i], _captureLengths[i]);
-                }
-                if (close(_fd) != 0) cleanup_error("Could not close camera device");
-            });
+            const bool released = hal::releaseCameraCapture(
+                _startAttempted,
+                [&] {
+                    // STREAMON may have failed after enabling DMA; STREAMOFF must
+                    // succeed even in that case before close may destroy its buffers.
+                    int type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+                    return ioctl(_fd, VIDIOC_STREAMOFF, &type) == 0;
+                },
+                [&] {
+                    for (size_t i = 0; i < _captureBuffers.size(); ++i) {
+                        if (_captureBuffers[i] != nullptr) munmap(_captureBuffers[i], _captureLengths[i]);
+                    }
+                    if (close(_fd) != 0) cleanup_error("Could not close camera device");
+                });
             if (!released) {
                 // Deliberately retain fd/mappings for this boot. The capture
                 // driver still owns them; Unavailable prevents another session.
@@ -126,7 +131,7 @@ public:
         if (_ppa != nullptr) {
             if (ppa_unregister_client(_ppa) != ESP_OK) {
                 cleanup_error("Could not release camera scaler; preview buffers retained until reboot");
-                return; // A failed unregister does not prove the scaler released its buffers.
+                return;  // A failed unregister does not prove the scaler released its buffers.
             }
         }
         for (auto* buffer : _previewBuffers) heap_caps_free(buffer);
@@ -136,13 +141,13 @@ public:
     {
         if (!s_video_initialized) {
             esp_video_init_csi_config_t csi = {};
-            csi.sccb_config.init_sccb = false;
-            csi.sccb_config.i2c_handle = bsp_i2c_get_handle();
-            csi.sccb_config.freq = 400000;
-            csi.reset_pin = -1;
-            csi.pwdn_pin = -1;
-            esp_video_init_config_t config = {};
-            config.csi = &csi;
+            csi.sccb_config.init_sccb       = false;
+            csi.sccb_config.i2c_handle      = bsp_i2c_get_handle();
+            csi.sccb_config.freq            = 400000;
+            csi.reset_pin                   = -1;
+            csi.pwdn_pin                    = -1;
+            esp_video_init_config_t config  = {};
+            config.csi                      = &csi;
             if (esp_video_init(&config) != ESP_OK) {
                 error = "Camera initialization failed";
                 return false;
@@ -158,7 +163,7 @@ public:
             return false;
         }
         v4l2_format format = {};
-        format.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        format.type        = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         if (ioctl(_fd, VIDIOC_G_FMT, &format) != 0) {
             error = "Could not read camera format";
             return false;
@@ -170,21 +175,21 @@ public:
             error = "Camera RGB565 format is unavailable";
             return false;
         }
-        _sourceWidth = format.fmt.pix.width;
-        _sourceHeight = format.fmt.pix.height;
+        _sourceWidth                = format.fmt.pix.width;
+        _sourceHeight               = format.fmt.pix.height;
         v4l2_requestbuffers buffers = {};
-        buffers.count = kBufferCount;
-        buffers.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        buffers.memory = V4L2_MEMORY_MMAP;
+        buffers.count               = kBufferCount;
+        buffers.type                = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buffers.memory              = V4L2_MEMORY_MMAP;
         if (ioctl(_fd, VIDIOC_REQBUFS, &buffers) != 0 || buffers.count < kBufferCount) {
             error = "Could not allocate camera capture buffers";
             return false;
         }
         for (int i = 0; i < kBufferCount; ++i) {
             v4l2_buffer buffer = {};
-            buffer.index = i;
-            buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-            buffer.memory = V4L2_MEMORY_MMAP;
+            buffer.index       = i;
+            buffer.type        = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+            buffer.memory      = V4L2_MEMORY_MMAP;
             if (ioctl(_fd, VIDIOC_QUERYBUF, &buffer) != 0 ||
                 buffer.length < static_cast<size_t>(_sourceWidth) * _sourceHeight * sizeof(uint16_t)) {
                 error = "Invalid camera capture buffer";
@@ -204,26 +209,27 @@ public:
         }
 
         _request = request;
-        _previewBytes = (static_cast<size_t>(request.width) * request.height * sizeof(uint16_t) +
-                         kBufferAlignment - 1) & ~(kBufferAlignment - 1);
+        _previewBytes =
+            (static_cast<size_t>(request.width) * request.height * sizeof(uint16_t) + kBufferAlignment - 1) &
+            ~(kBufferAlignment - 1);
         for (auto& buffer : _previewBuffers) {
-            buffer = static_cast<uint8_t*>(heap_caps_aligned_calloc(kBufferAlignment, 1, _previewBytes,
-                                                                   MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM));
+            buffer = static_cast<uint8_t*>(
+                heap_caps_aligned_calloc(kBufferAlignment, 1, _previewBytes, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM));
             if (buffer == nullptr) {
                 error = "Not enough memory for camera preview";
                 return false;
             }
         }
-        ppa_client_config_t ppaConfig = {};
-        ppaConfig.oper_type = PPA_OPERATION_SRM;
+        ppa_client_config_t ppaConfig   = {};
+        ppaConfig.oper_type             = PPA_OPERATION_SRM;
         ppaConfig.max_pending_trans_num = 1;
         if (ppa_register_client(&ppaConfig, &_ppa) != ESP_OK) {
             error = "Camera preview scaler is unavailable";
             return false;
         }
         esp_timer_create_args_t timer = {};
-        timer.callback = frame_watchdog;
-        timer.name = "camera_watchdog";
+        timer.callback                = frame_watchdog;
+        timer.name                    = "camera_watchdog";
         if (esp_timer_create(&timer, &_watchdog) != ESP_OK || esp_timer_start_periodic(_watchdog, 50000) != ESP_OK) {
             error = "Could not start camera frame watchdog";
             return false;
@@ -231,7 +237,7 @@ public:
         if (stopping()) {
             return false;
         }
-        int type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        int type        = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         _startAttempted = true;
         if (ioctl(_fd, VIDIOC_STREAMON, &type) != 0) {
             error = "Could not start camera stream";
@@ -250,15 +256,15 @@ public:
         int nextBuffer = 0;
         while (!stopping()) {
             v4l2_buffer frame = {};
-            frame.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-            frame.memory = V4L2_MEMORY_MMAP;
+            frame.type        = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+            frame.memory      = V4L2_MEMORY_MMAP;
             {
                 std::lock_guard<std::mutex> lock(s_mutex);
                 if (s_stop_requested) {
                     break;
                 }
-                s_waiting_for_frame = true;
-                s_frame_timed_out = false;
+                s_waiting_for_frame     = true;
+                s_frame_timed_out       = false;
                 s_frame_wait_started_us = esp_timer_get_time();
             }
             const int received = ioctl(_fd, VIDIOC_DQBUF, &frame);
@@ -266,7 +272,7 @@ public:
             {
                 std::lock_guard<std::mutex> lock(s_mutex);
                 s_waiting_for_frame = false;
-                timedOut = s_frame_timed_out;
+                timedOut            = s_frame_timed_out;
             }
             if (stopping()) {
                 break;
@@ -281,25 +287,25 @@ public:
                 break;
             }
             ppa_srm_oper_config_t transform = {};
-            transform.in.buffer = _captureBuffers[frame.index];
-            transform.in.pic_w = _sourceWidth;
-            transform.in.pic_h = _sourceHeight;
-            transform.in.block_w = _sourceWidth;
-            transform.in.block_h = _sourceHeight;
-            transform.in.srm_cm = PPA_SRM_COLOR_MODE_RGB565;
-            transform.out.buffer = _previewBuffers[nextBuffer];
-            transform.out.buffer_size = _previewBytes;
-            transform.out.pic_w = _request.width;
-            transform.out.pic_h = _request.height;
-            transform.out.block_offset_x = fit.x;
-            transform.out.block_offset_y = fit.y;
-            transform.out.srm_cm = PPA_SRM_COLOR_MODE_RGB565;
-            transform.rotation_angle = PPA_SRM_ROTATION_ANGLE_0;
-            transform.scale_x = fit.scale;
-            transform.scale_y = fit.scale;
-            transform.mirror_x = true;
-            transform.mode = PPA_TRANS_MODE_BLOCKING;
-            const esp_err_t transformed = ppa_do_scale_rotate_mirror(_ppa, &transform);
+            transform.in.buffer             = _captureBuffers[frame.index];
+            transform.in.pic_w              = _sourceWidth;
+            transform.in.pic_h              = _sourceHeight;
+            transform.in.block_w            = _sourceWidth;
+            transform.in.block_h            = _sourceHeight;
+            transform.in.srm_cm             = PPA_SRM_COLOR_MODE_RGB565;
+            transform.out.buffer            = _previewBuffers[nextBuffer];
+            transform.out.buffer_size       = _previewBytes;
+            transform.out.pic_w             = _request.width;
+            transform.out.pic_h             = _request.height;
+            transform.out.block_offset_x    = fit.x;
+            transform.out.block_offset_y    = fit.y;
+            transform.out.srm_cm            = PPA_SRM_COLOR_MODE_RGB565;
+            transform.rotation_angle        = PPA_SRM_ROTATION_ANGLE_0;
+            transform.scale_x               = fit.scale;
+            transform.scale_y               = fit.scale;
+            transform.mirror_x              = true;
+            transform.mode                  = PPA_TRANS_MODE_BLOCKING;
+            const esp_err_t transformed     = ppa_do_scale_rotate_mirror(_ppa, &transform);
             if (ioctl(_fd, VIDIOC_QBUF, &frame) != 0 || transformed != ESP_OK) {
                 error = transformed != ESP_OK ? "Could not scale camera frame" : "Could not recycle camera frame";
                 break;
@@ -335,16 +341,16 @@ private:
 
     std::string& _error;
     bool& _cleanupFailed;
-    int _fd = -1;
-    bool _startAttempted = false;
-    uint32_t _sourceWidth = 0;
+    int _fd                = -1;
+    bool _startAttempted   = false;
+    uint32_t _sourceWidth  = 0;
     uint32_t _sourceHeight = 0;
     CaptureRequest _request{};
     std::array<uint8_t*, kBufferCount> _captureBuffers{};
     std::array<size_t, kBufferCount> _captureLengths{};
     std::array<uint8_t*, 2> _previewBuffers{};
-    size_t _previewBytes = 0;
-    ppa_client_handle_t _ppa = nullptr;
+    size_t _previewBytes         = 0;
+    ppa_client_handle_t _ppa     = nullptr;
     esp_timer_handle_t _watchdog = nullptr;
 };
 
@@ -367,10 +373,11 @@ void run_capture_session(CaptureRequest* param)
     }
     {
         std::lock_guard<std::mutex> lock(s_mutex);
-        s_status.state = cleanupFailed ? State::Unavailable :
-                         error.empty() || s_stop_requested ? State::Stopped : State::Failed;
+        s_status.state     = cleanupFailed                       ? State::Unavailable
+                             : error.empty() || s_stop_requested ? State::Stopped
+                                                                 : State::Failed;
         s_status.lastError = s_stop_requested && !cleanupFailed ? "" : error;
-        s_task = nullptr;
+        s_task             = nullptr;
     }
     s_stopped.notify_all();
 }
@@ -393,33 +400,33 @@ bool HalEsp32::startCameraCapture(lv_obj_t* canvas)
     }
     s_status = {};
     if (canvas == nullptr) {
-        s_status.state = State::Failed;
+        s_status.state     = State::Failed;
         s_status.lastError = "Camera preview is unavailable";
         return false;
     }
     lv_obj_update_layout(canvas);
-    const int width = lv_obj_get_width(canvas);
+    const int width  = lv_obj_get_width(canvas);
     const int height = lv_obj_get_height(canvas);
     if (width <= 0 || height <= 0 || width > 1280 || height > 720) {
-        s_status.state = State::Failed;
+        s_status.state     = State::Failed;
         s_status.lastError = "Invalid camera preview dimensions";
         return false;
     }
     auto* request = new (std::nothrow) CaptureRequest{width, height};
     if (request == nullptr) {
-        s_status.state = State::Failed;
+        s_status.state     = State::Failed;
         s_status.lastError = "Not enough memory to start camera";
         return false;
     }
-    s_canvas = canvas;
+    s_canvas         = canvas;
     s_stop_requested = false;
-    s_status.state = State::Starting;
-    s_status.width = width;
-    s_status.height = height;
+    s_status.state   = State::Starting;
+    s_status.width   = width;
+    s_status.height  = height;
     if (xTaskCreatePinnedToCore(capture_task, "camera", 8192, request, 5, &s_task, 1) != pdPASS) {
-        s_task = nullptr;
-        s_canvas = nullptr;
-        s_status.state = State::Failed;
+        s_task             = nullptr;
+        s_canvas           = nullptr;
+        s_status.state     = State::Failed;
         s_status.lastError = "Could not start camera task";
         delete request;
         return false;
@@ -437,7 +444,7 @@ void HalEsp32::stopCameraCapture()
     }
     if (s_task != nullptr) {
         s_stop_requested = true;
-        s_status.state = State::Stopping;
+        s_status.state   = State::Stopping;
     }
 }
 
@@ -466,7 +473,7 @@ bool HalEsp32::shutdownCamera(uint32_t timeoutMs)
         }
         if (s_task != nullptr) {
             s_stop_requested = true;
-            s_status.state = State::Stopping;
+            s_status.state   = State::Stopping;
         }
     }
     std::unique_lock<std::mutex> lock(s_mutex);

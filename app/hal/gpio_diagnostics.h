@@ -14,9 +14,9 @@ struct GpioPinInfo {
 };
 
 struct GpioOutputState {
-    bool claimed = false;
+    bool claimed    = false;
     bool levelKnown = false;
-    bool high = false;
+    bool high       = false;
 };
 
 }  // namespace hal

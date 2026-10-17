@@ -24,7 +24,7 @@ static void test_runs_job_and_clears_busy()
     auto& runner = app_runtime::globalAsyncJobRunner();
     wait_for_idle();
 
-    std::atomic<int> calls {0};
+    std::atomic<int> calls{0};
     assert(runner.start("unit test", [&]() { calls.fetch_add(1); }));
     wait_for_idle();
 
@@ -38,8 +38,8 @@ static void test_rejects_concurrent_jobs()
     auto& runner = app_runtime::globalAsyncJobRunner();
     wait_for_idle();
 
-    std::atomic<bool> release {false};
-    std::atomic<int> secondCalls {0};
+    std::atomic<bool> release{false};
+    std::atomic<int> secondCalls{0};
     assert(runner.start("long unit test", [&]() {
         while (!release.load()) {
             std::this_thread::sleep_for(5ms);

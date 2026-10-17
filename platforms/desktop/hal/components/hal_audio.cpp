@@ -11,12 +11,12 @@
 
 namespace {
 using Operation = hal::HalBase::AudioOperation;
-using Phase = hal::HalBase::AudioPhase;
-using Token = hal::AudioSession::Token;
+using Phase     = hal::HalBase::AudioPhase;
+using Token     = hal::AudioSession::Token;
 hal::AudioSession session;
 app_runtime::AsyncJobRunner runner;
-std::atomic<uint8_t> volume {20};
-SDL_AudioDeviceID device = 0; // Only the reserved codec owner touches SDL audio.
+std::atomic<uint8_t> volume{20};
+SDL_AudioDeviceID device = 0;  // Only the reserved codec owner touches SDL audio.
 
 bool pauseFor(Token token, uint32_t ms)
 {
@@ -35,12 +35,12 @@ bool prepareDevice(Token token)
         session.fail(token, "Audio initialization failed");
         return false;
     }
-    SDL_AudioSpec desired {};
-    desired.freq = 48000;
-    desired.format = AUDIO_S16SYS;
+    SDL_AudioSpec desired{};
+    desired.freq     = 48000;
+    desired.format   = AUDIO_S16SYS;
     desired.channels = 2;
-    desired.samples = 1024;
-    device = SDL_OpenAudioDevice(nullptr, 0, &desired, nullptr, 0);
+    desired.samples  = 1024;
+    device           = SDL_OpenAudioDevice(nullptr, 0, &desired, nullptr, 0);
     if (!device) {
         session.fail(token, "Audio device unavailable");
         return false;
@@ -73,14 +73,15 @@ void playPcm(Token token, std::vector<int16_t>& data)
     session.setPhase(token, Phase::Playing);
     hal::transferAudio(session, token, data.data(), data.size() * sizeof(int16_t),
                        [token](void* buffer, size_t length, size_t& done) {
-        if (!waitQueue(token)) return false;
-        const float scale = volume.load() / 100.0f;
-        std::vector<int16_t> adjusted(static_cast<int16_t*>(buffer), static_cast<int16_t*>(buffer) + length / sizeof(int16_t));
-        for (auto& sample : adjusted) sample = static_cast<int16_t>(sample * scale);
-        if (SDL_QueueAudio(device, adjusted.data(), static_cast<Uint32>(length)) < 0) return false;
-        done = length;
-        return true;
-    });
+                           if (!waitQueue(token)) return false;
+                           const float scale = volume.load() / 100.0f;
+                           std::vector<int16_t> adjusted(static_cast<int16_t*>(buffer),
+                                                         static_cast<int16_t*>(buffer) + length / sizeof(int16_t));
+                           for (auto& sample : adjusted) sample = static_cast<int16_t>(sample * scale);
+                           if (SDL_QueueAudio(device, adjusted.data(), static_cast<Uint32>(length)) < 0) return false;
+                           done = length;
+                           return true;
+                       });
     waitQueue(token);
     SDL_ClearQueuedAudio(device);
 }
@@ -91,9 +92,10 @@ void startWorker(Operation operation, Phase phase, Work work)
     const auto token = session.reserve(operation, phase);
     if (!token) return;
     if (!runner.start("Audio", [token, work = std::move(work)]() mutable {
-        work(token);
-        session.finish(token);
-    })) session.startFailed(token);
+            work(token);
+            session.finish(token);
+        }))
+        session.startFailed(token);
 }
 
 void micTest(Token token)
@@ -113,12 +115,30 @@ hal::HalBase::MicTestState_t micState()
 }
 }  // namespace
 
-void HalDesktop::setSpeakerVolume(uint8_t value) { volume.store(std::min<uint8_t>(100, value)); }
-uint8_t HalDesktop::getSpeakerVolume() { return volume.load(); }
-hal::HalBase::AudioStatus HalDesktop::audioGetStatus() { return session.snapshot(); }
-void HalDesktop::audioCancel() { session.cancel(); }
-bool HalDesktop::stopAudioAndWait(uint32_t timeoutMs) { return session.stopAndWait(timeoutMs); }
-void HalDesktop::resumeAudio() { session.resume(); }
+void HalDesktop::setSpeakerVolume(uint8_t value)
+{
+    volume.store(std::min<uint8_t>(100, value));
+}
+uint8_t HalDesktop::getSpeakerVolume()
+{
+    return volume.load();
+}
+hal::HalBase::AudioStatus HalDesktop::audioGetStatus()
+{
+    return session.snapshot();
+}
+void HalDesktop::audioCancel()
+{
+    session.cancel();
+}
+bool HalDesktop::stopAudioAndWait(uint32_t timeoutMs)
+{
+    return session.stopAndWait(timeoutMs);
+}
+void HalDesktop::resumeAudio()
+{
+    session.resume();
+}
 
 void HalDesktop::audioPlay(std::vector<int16_t>& data, bool async)
 {
@@ -158,10 +178,22 @@ void HalDesktop::audioRecord(std::vector<int16_t>& data, uint16_t durationMs, fl
     }
     session.finish(token);
 }
-void HalDesktop::startDualMicRecordTest() { startWorker(Operation::DualMic, Phase::Recording, micTest); }
-void HalDesktop::startHeadphoneMicRecordTest() { startWorker(Operation::HeadphoneMic, Phase::Recording, micTest); }
-hal::HalBase::MicTestState_t HalDesktop::getDualMicRecordTestState() { return micState(); }
-hal::HalBase::MicTestState_t HalDesktop::getHeadphoneMicRecordTestState() { return micState(); }
+void HalDesktop::startDualMicRecordTest()
+{
+    startWorker(Operation::DualMic, Phase::Recording, micTest);
+}
+void HalDesktop::startHeadphoneMicRecordTest()
+{
+    startWorker(Operation::HeadphoneMic, Phase::Recording, micTest);
+}
+hal::HalBase::MicTestState_t HalDesktop::getDualMicRecordTestState()
+{
+    return micState();
+}
+hal::HalBase::MicTestState_t HalDesktop::getHeadphoneMicRecordTestState()
+{
+    return micState();
+}
 void HalDesktop::startPlayMusicTest()
 {
     startWorker(Operation::Music, Phase::Playing, [](Token token) { pauseFor(token, 5000); });
@@ -170,9 +202,14 @@ hal::HalBase::MusicPlayState_t HalDesktop::getMusicPlayTestState()
 {
     const auto status = session.snapshot();
     return status.busy && (status.operation == Operation::Music || status.operation == Operation::Startup ||
-                           status.operation == Operation::Shutdown) ? MUSIC_PLAY_PLAYING : MUSIC_PLAY_IDLE;
+                           status.operation == Operation::Shutdown)
+               ? MUSIC_PLAY_PLAYING
+               : MUSIC_PLAY_IDLE;
 }
-void HalDesktop::stopPlayMusicTest() { audioCancel(); }
+void HalDesktop::stopPlayMusicTest()
+{
+    audioCancel();
+}
 void HalDesktop::playStartupSfx()
 {
     startWorker(Operation::Startup, Phase::Playing, [](Token token) { pauseFor(token, 500); });

@@ -35,7 +35,7 @@ static void test_i2c_scan_results_fit_panel()
 
 static void test_i2c_scan_vertical_spacing_is_stable()
 {
-    const auto layout = app_hardware_i2c::makeI2cScanLayout();
+    const auto layout      = app_hardware_i2c::makeI2cScanLayout();
     const auto firstButton = app_hardware_i2c::i2cScanActionRect(layout, 0);
 
     assert(layout.description.y + layout.description.h + layout.sectionGap <= firstButton.y);

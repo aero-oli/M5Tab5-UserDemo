@@ -22,9 +22,9 @@ struct CatalogEntry {
     std::string category;
     std::string label;
     std::string iconExpression;
-    int order = 0;
-    int summaryPriority = 0;
-    bool dangerous = false;
+    int order             = 0;
+    int summaryPriority   = 0;
+    bool dangerous        = false;
     bool dashboardVisible = false;
 };
 
@@ -61,13 +61,13 @@ std::vector<CatalogEntry> catalogEntries(const std::string& catalogSource)
     for (auto it = std::sregex_iterator(catalogSource.begin(), catalogSource.end(), entryRegex);
          it != std::sregex_iterator(); ++it) {
         CatalogEntry entry;
-        entry.key = (*it)[1].str();
-        entry.category = (*it)[2].str();
-        entry.label = (*it)[3].str();
-        entry.iconExpression = (*it)[4].str();
-        entry.order = std::stoi((*it)[6].str());
-        entry.summaryPriority = std::stoi((*it)[7].str());
-        entry.dangerous = (*it)[8].str() == "true";
+        entry.key              = (*it)[1].str();
+        entry.category         = (*it)[2].str();
+        entry.label            = (*it)[3].str();
+        entry.iconExpression   = (*it)[4].str();
+        entry.order            = std::stoi((*it)[6].str());
+        entry.summaryPriority  = std::stoi((*it)[7].str());
+        entry.dangerous        = (*it)[8].str() == "true";
         entry.dashboardVisible = (*it)[9].str() == "true";
         entries.push_back(entry);
     }
@@ -81,8 +81,7 @@ const CatalogEntry& requireEntry(const std::map<std::string, CatalogEntry>& entr
     return it->second;
 }
 
-void assertCategory(const std::map<std::string, CatalogEntry>& entries,
-                    const std::string& key,
+void assertCategory(const std::map<std::string, CatalogEntry>& entries, const std::string& key,
                     const std::string& category)
 {
     assert(requireEntry(entries, key).category == category);
@@ -94,7 +93,7 @@ int main()
 {
     const fs::path repoRoot = fs::path(__FILE__).parent_path().parent_path();
     const auto registryKeys = appKeysFromRegistry(readFile(repoRoot / "app" / "apps" / "app_registry.h"));
-    const auto entries = catalogEntries(readFile(repoRoot / "app" / "apps" / "app_catalog.cpp"));
+    const auto entries      = catalogEntries(readFile(repoRoot / "app" / "apps" / "app_catalog.cpp"));
 
     std::map<std::string, CatalogEntry> byKey;
     for (const auto& entry : entries) {

@@ -14,16 +14,15 @@ struct ToggleCall {
 void test_reads_initial_toggle_state()
 {
     app_hardware_switches::SwitchSnapshot snapshot;
-    snapshot.charge = true;
-    snapshot.chargeQc = false;
-    snapshot.ext5v = true;
-    snapshot.usbA5v = false;
+    snapshot.charge     = true;
+    snapshot.chargeQc   = false;
+    snapshot.ext5v      = true;
+    snapshot.usbA5v     = false;
     snapshot.extAntenna = true;
 
-    app_hardware_switches::SwitchesController controller(
-        [&] { return snapshot; },
-        [&](app_hardware_switches::SwitchId, bool) {},
-        [] { return app_hardware_switches::InterfaceSnapshot{}; });
+    app_hardware_switches::SwitchesController controller([&] { return snapshot; },
+                                                         [&](app_hardware_switches::SwitchId, bool) {},
+                                                         [] { return app_hardware_switches::InterfaceSnapshot{}; });
 
     auto read = controller.readSwitches();
 
@@ -37,10 +36,11 @@ void test_reads_initial_toggle_state()
 void test_set_switch_dispatches_to_hal_binding()
 {
     std::vector<ToggleCall> calls;
-    app_hardware_switches::SwitchesController controller(
-        [] { return app_hardware_switches::SwitchSnapshot{}; },
-        [&](app_hardware_switches::SwitchId id, bool enabled) { calls.push_back({id, enabled}); },
-        [] { return app_hardware_switches::InterfaceSnapshot{}; });
+    app_hardware_switches::SwitchesController controller([] { return app_hardware_switches::SwitchSnapshot{}; },
+                                                         [&](app_hardware_switches::SwitchId id, bool enabled) {
+                                                             calls.push_back({id, enabled});
+                                                         },
+                                                         [] { return app_hardware_switches::InterfaceSnapshot{}; });
 
     controller.setSwitch(app_hardware_switches::SwitchId::UsbA5v, true);
     controller.setSwitch(app_hardware_switches::SwitchId::ChargeQc, false);
@@ -55,13 +55,13 @@ void test_set_switch_dispatches_to_hal_binding()
 void test_formats_interface_status()
 {
     app_hardware_switches::InterfaceSnapshot snapshot;
-    snapshot.valid = true;
-    snapshot.hasSample = true;
-    snapshot.usbCKnown = true;
+    snapshot.valid          = true;
+    snapshot.hasSample      = true;
+    snapshot.usbCKnown      = true;
     snapshot.headphoneKnown = true;
-    snapshot.usbC = true;
-    snapshot.usbA = false;
-    snapshot.headphone = true;
+    snapshot.usbC           = true;
+    snapshot.usbA           = false;
+    snapshot.headphone      = true;
 
     assert(app_hardware_switches::SwitchesController::formatInterfaceStatus(snapshot) ==
            "USB-C: connected    USB-A: unknown    Headphone: connected");
@@ -69,7 +69,7 @@ void test_formats_interface_status()
     snapshot.error = "Read failed";
     assert(app_hardware_switches::SwitchesController::formatInterfaceStatus(snapshot) ==
            "USB-C: unknown    USB-A: unknown    Headphone: unknown (stale)");
-    snapshot.valid = true;
+    snapshot.valid     = true;
     snapshot.simulated = true;
     assert(app_hardware_switches::SwitchesController::formatInterfaceStatus(snapshot).find("Simulated: ") == 0);
 }

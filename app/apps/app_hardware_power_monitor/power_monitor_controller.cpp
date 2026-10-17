@@ -27,8 +27,8 @@ PowerMonitorController::PowerMonitorController(UpdateFn updateFn, DataFn dataFn,
 
 PowerSample PowerMonitorController::sample()
 {
-    const auto update = _updateFn;
-    const auto dataFn = _dataFn;
+    const auto update  = _updateFn;
+    const auto dataFn  = _dataFn;
     const auto cpuTemp = _cpuTempFn;
     if (!update || !dataFn || !cpuTemp) {
         return cached();
@@ -37,15 +37,15 @@ PowerSample PowerMonitorController::sample()
         update();
         const auto data = dataFn();
         PowerSample value;
-        value.valid = data.valid;
-        value.hasSample = data.hasSample;
-        value.simulated = data.simulated;
-        value.sampledAtMs = data.sampledAtMs;
-        value.error = data.error;
-        value.busVoltage = data.busVoltage;
-        value.current = data.shuntCurrent;
+        value.valid        = data.valid;
+        value.hasSample    = data.hasSample;
+        value.simulated    = data.simulated;
+        value.sampledAtMs  = data.sampledAtMs;
+        value.error        = data.error;
+        value.busVoltage   = data.busVoltage;
+        value.current      = data.shuntCurrent;
         value.shuntVoltage = data.shuntVoltage;
-        value.outputPower = data.busPower;
+        value.outputPower  = data.busPower;
         value.cpuTempValid = cpuTemp(value.cpuTempC);
         return value;
     });
@@ -59,7 +59,8 @@ PowerSample PowerMonitorController::cached() const
 std::string PowerMonitorController::statusText(const PowerSample& sample, uint32_t nowMs)
 {
     const auto source = sample.simulated ? "Simulated" : "Hardware";
-    if (!sample.hasSample) return sample.error.empty() ? "Waiting for first power sample..." : "Unavailable: " + sample.error;
+    if (!sample.hasSample)
+        return sample.error.empty() ? "Waiting for first power sample..." : "Unavailable: " + sample.error;
     if (!sample.valid || nowMs - sample.sampledAtMs > 2000)
         return std::string(source) + " - stale" + (sample.error.empty() ? "" : ": " + sample.error);
     return std::string(source) + " - up to 4 Hz while open";

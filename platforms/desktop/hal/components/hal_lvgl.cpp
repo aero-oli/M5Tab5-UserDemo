@@ -46,29 +46,27 @@ void HalDesktop::lvgl_init()
     auto keyboard = lv_sdl_keyboard_create();
     lv_indev_set_display(keyboard, display);
     lv_indev_set_group(keyboard, lv_group_get_default());
-
-
 }
 
 namespace {
-thread_local unsigned displayLockDepth = 0;
+thread_local unsigned displayLockDepth   = 0;
 thread_local uint64_t displayLockStartUs = 0;
-thread_local uint64_t displayLockWaitUs = 0;
-}
+thread_local uint64_t displayLockWaitUs  = 0;
+}  // namespace
 void HalDesktop::lvglLock()
 {
     const auto started = app_runtime::monotonicMicros();
     _lvgl_mutex.lock();
     if (displayLockDepth++ == 0) {
         displayLockStartUs = app_runtime::monotonicMicros();
-        displayLockWaitUs = displayLockStartUs - started;
+        displayLockWaitUs  = displayLockStartUs - started;
     }
 }
 
 void HalDesktop::lvglUnlock()
 {
     const bool outer = --displayLockDepth == 0;
-    const auto held = app_runtime::monotonicMicros() - displayLockStartUs;
+    const auto held  = app_runtime::monotonicMicros() - displayLockStartUs;
     _lvgl_mutex.unlock();
     if (outer) app_runtime::globalPerformanceTelemetry().recordLock(displayLockWaitUs, held);
 }

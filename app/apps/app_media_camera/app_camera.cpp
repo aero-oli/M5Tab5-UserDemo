@@ -64,11 +64,11 @@ private:
     CameraController _controller;
     std::unique_ptr<app_ui::AppShell> _shell;
     lv_obj_t* _cameraCanvas = nullptr;
-    lv_obj_t* _status = nullptr;
-    lv_obj_t* _startButton = nullptr;
-    lv_obj_t* _stopButton = nullptr;
-    lv_obj_t* _detail = nullptr;
-    lv_obj_t* _error = nullptr;
+    lv_obj_t* _status       = nullptr;
+    lv_obj_t* _startButton  = nullptr;
+    lv_obj_t* _stopButton   = nullptr;
+    lv_obj_t* _detail       = nullptr;
+    lv_obj_t* _error        = nullptr;
     std::string _lastStatus;
     std::string _lastDetail;
     std::string _lastError;
@@ -89,17 +89,16 @@ private:
 
         auto* previewPanel = app_ui::makePanel(content(), layout.previewPanel.x, layout.previewPanel.y,
                                                layout.previewPanel.w, layout.previewPanel.h);
-        _cameraCanvas = lv_canvas_create(previewPanel);
+        _cameraCanvas      = lv_canvas_create(previewPanel);
         lv_obj_set_pos(_cameraCanvas, layout.cameraCanvas.x, layout.cameraCanvas.y);
         lv_obj_set_size(_cameraCanvas, layout.cameraCanvas.w, layout.cameraCanvas.h);
         lv_obj_set_style_bg_color(_cameraCanvas, app_ui::theme::color(app_ui::theme::bg), 0);
         lv_obj_set_style_radius(_cameraCanvas, 8, 0);
 
-        auto* sidePanel =
-            app_ui::makePanel(content(), layout.controlPanel.x, layout.controlPanel.y, layout.controlPanel.w,
-                              layout.controlPanel.h);
-        auto* title = app_ui::makeLabel(sidePanel, "Capture", layout.controlTitle.x, layout.controlTitle.y,
-                                        &lv_font_montserrat_24, app_ui::theme::color(app_ui::theme::text));
+        auto* sidePanel = app_ui::makePanel(content(), layout.controlPanel.x, layout.controlPanel.y,
+                                            layout.controlPanel.w, layout.controlPanel.h);
+        auto* title     = app_ui::makeLabel(sidePanel, "Capture", layout.controlTitle.x, layout.controlTitle.y,
+                                            &lv_font_montserrat_24, app_ui::theme::color(app_ui::theme::text));
         lv_obj_set_width(title, layout.controlTitle.w);
         lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
         _status = app_ui::makeLabel(sidePanel, "Camera stopped", layout.statusText.x, layout.statusText.y,
@@ -108,28 +107,26 @@ private:
         lv_label_set_long_mode(_status, LV_LABEL_LONG_WRAP);
 
         _startButton = app_ui::makeButton(sidePanel, "Start", layout.startButton.x, layout.startButton.y,
-                                         layout.startButton.w, layout.startButton.h, app_ui::ButtonKind::Primary);
+                                          layout.startButton.w, layout.startButton.h, app_ui::ButtonKind::Primary);
         lv_obj_add_event_cb(_startButton, AppCamera::onStart, LV_EVENT_CLICKED, this);
         _stopButton = app_ui::makeButton(sidePanel, "Stop", layout.stopButton.x, layout.stopButton.y,
-                                        layout.stopButton.w, layout.stopButton.h, app_ui::ButtonKind::Danger);
+                                         layout.stopButton.w, layout.stopButton.h, app_ui::ButtonKind::Danger);
         lv_obj_add_event_cb(_stopButton, AppCamera::onStop, LV_EVENT_CLICKED, this);
 
-        _detail = app_ui::makeLabel(content(), "",
-                                       layout.hint.x, layout.hint.y,
-                                       &lv_font_montserrat_18, app_ui::theme::color(app_ui::theme::muted));
+        _detail = app_ui::makeLabel(content(), "", layout.hint.x, layout.hint.y, &lv_font_montserrat_18,
+                                    app_ui::theme::color(app_ui::theme::muted));
         lv_obj_set_size(_detail, layout.hint.w, layout.hint.h);
         lv_label_set_long_mode(_detail, LV_LABEL_LONG_WRAP);
-        _error = app_ui::makeFittedLabel(content(), "", layout.errorText.x, layout.errorText.y,
-                                         layout.errorText.w, layout.errorText.h, &lv_font_montserrat_18,
-                                         app_ui::theme::color(app_ui::theme::red), LV_LABEL_LONG_WRAP,
-                                         LV_TEXT_ALIGN_LEFT);
+        _error = app_ui::makeFittedLabel(
+            content(), "", layout.errorText.x, layout.errorText.y, layout.errorText.w, layout.errorText.h,
+            &lv_font_montserrat_18, app_ui::theme::color(app_ui::theme::red), LV_LABEL_LONG_WRAP, LV_TEXT_ALIGN_LEFT);
         refresh();
     }
 
     void refresh()
     {
         const auto snapshot = _controller.status();
-        const auto text = CameraController::stateText(snapshot.state);
+        const auto text     = CameraController::stateText(snapshot.state);
         if (_lastStatus != text) {
             lv_label_set_text(_status, text);
             _lastStatus = text;
@@ -147,8 +144,7 @@ private:
         char detail[80] = {};
         if (snapshot.width > 0 && snapshot.height > 0) {
             std::snprintf(detail, sizeof(detail), "%s%d x %d\n%u frames", snapshot.simulated ? "Simulation\n" : "",
-                          snapshot.width, snapshot.height,
-                          static_cast<unsigned>(snapshot.frames));
+                          snapshot.width, snapshot.height, static_cast<unsigned>(snapshot.frames));
         }
         if (_lastDetail != detail) {
             lv_label_set_text(_detail, detail);
@@ -177,8 +173,8 @@ private:
     static CameraCallbacks makeCallbacks()
     {
         CameraCallbacks callbacks;
-        callbacks.start = [](lv_obj_t* canvas) { return GetHAL()->startCameraCapture(canvas); };
-        callbacks.stop = [] { GetHAL()->stopCameraCapture(); };
+        callbacks.start  = [](lv_obj_t* canvas) { return GetHAL()->startCameraCapture(canvas); };
+        callbacks.stop   = [] { GetHAL()->stopCameraCapture(); };
         callbacks.status = [] { return GetHAL()->cameraGetStatus(); };
         return callbacks;
     }

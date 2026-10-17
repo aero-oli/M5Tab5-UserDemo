@@ -22,7 +22,8 @@ inline app_registry::AppStatus clockStatus(const hal::HalBase::RtcData& data, ui
     if (!data.hasSample || !data.valid) return {"Clock unavailable", StatusLevel::Warning};
     if (nowMs - data.sampledAtMs > 2000) return {"Clock stale", StatusLevel::Warning};
     char value[24];
-    std::snprintf(value, sizeof(value), "%s%02d:%02d", data.simulated ? "Sim " : "", data.time.tm_hour, data.time.tm_min);
+    std::snprintf(value, sizeof(value), "%s%02d:%02d", data.simulated ? "Sim " : "", data.time.tm_hour,
+                  data.time.tm_min);
     return {value, StatusLevel::Neutral};
 }
-} // namespace launcher_view
+}  // namespace launcher_view

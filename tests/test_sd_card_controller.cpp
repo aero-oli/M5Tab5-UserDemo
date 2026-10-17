@@ -5,9 +5,9 @@
 #include <apps/runtime/async_job_runner.h>
 #include <hal/sd_scan.h>
 
-using Hal = hal::HalBase;
-using Status = Hal::SdScanStatus;
-using Result = Hal::SdScanResult;
+using Hal        = hal::HalBase;
+using Status     = Hal::SdScanStatus;
+using Result     = Hal::SdScanResult;
 using Controller = app_hardware_sd::SdCardController;
 
 void test_result_semantics()
@@ -32,19 +32,49 @@ void test_result_semantics()
 void test_mounted_session_cleanup()
 {
     int reads = 0, cleanups = 0;
-    auto mount = [] { return Result{Status::Success, {}, {}}; };
-    auto cleanup = [&] { ++cleanups; return true; };
+    auto mount   = [] { return Result{Status::Success, {}, {}}; };
+    auto cleanup = [&] {
+        ++cleanups;
+        return true;
+    };
     auto result = hal::scanSdCardSession(
-        [] { return Result{Status::MountFailed, {}, "No usable card"}; },
-        [&] { ++reads; return Result{Status::Success, {}, {}}; }, cleanup);
+        [] {
+            return Result{Status::MountFailed, {}, "No usable card"};
+        },
+        [&] {
+            ++reads;
+            return Result{Status::Success, {}, {}};
+        },
+        cleanup);
     assert(result.status == Status::MountFailed && reads == 0 && cleanups == 0);
-    result = hal::scanSdCardSession(mount, [&] { ++reads; return Result{Status::Success, {}, {}}; }, cleanup);
+    result = hal::scanSdCardSession(
+        mount,
+        [&] {
+            ++reads;
+            return Result{Status::Success, {}, {}};
+        },
+        cleanup);
     assert(result.status == Status::Success && result.entries.empty() && reads == 1 && cleanups == 1);
-    result = hal::scanSdCardSession(mount, [] { return Result{Status::ReadFailed, {}, "Open failed"}; }, cleanup);
+    result = hal::scanSdCardSession(
+        mount,
+        [] {
+            return Result{Status::ReadFailed, {}, "Open failed"};
+        },
+        cleanup);
     assert(result.status == Status::ReadFailed && result.error == "Open failed" && cleanups == 2);
-    result = hal::scanSdCardSession(mount, [] { return Result{Status::ReadFailed, {{"partial", false}}, "Read failed"}; }, cleanup);
+    result = hal::scanSdCardSession(
+        mount,
+        [] {
+            return Result{Status::ReadFailed, {{"partial", false}}, "Read failed"};
+        },
+        cleanup);
     assert(result.status == Status::ReadFailed && result.entries.empty() && cleanups == 3);
-    result = hal::scanSdCardSession(mount, [] { return Result{Status::Success, {{"file", false}}, {}}; }, [] { return false; });
+    result = hal::scanSdCardSession(
+        mount,
+        [] {
+            return Result{Status::Success, {{"file", false}}, {}};
+        },
+        [] { return false; });
     assert(result.status == Status::ReadFailed && result.entries.empty() && result.error == "SD card cleanup failed");
 }
 
@@ -52,7 +82,7 @@ void test_async_error_and_destruction()
 {
     using namespace std::chrono;
     std::promise<void> entered, release;
-    auto gate = release.get_future().share();
+    auto gate       = release.get_future().share();
     auto controller = std::make_unique<Controller>([&entered, gate](const std::string&) {
         entered.set_value();
         gate.wait();

@@ -10,9 +10,8 @@ using namespace app_registry;
 
 void AppRegistry::add(RegisteredApp app)
 {
-    auto it = std::find_if(_apps.begin(), _apps.end(), [&](const RegisteredApp& existing) {
-        return existing.key == app.key;
-    });
+    auto it = std::find_if(_apps.begin(), _apps.end(),
+                           [&](const RegisteredApp& existing) { return existing.key == app.key; });
     if (it != _apps.end()) {
         *it = std::move(app);
     } else {
@@ -127,11 +126,7 @@ const char* app_registry::categoryName(AppCategory category)
 const std::vector<AppCategory>& app_registry::categories()
 {
     static const std::vector<AppCategory> cats = {
-        AppCategory::Home,
-        AppCategory::Settings,
-        AppCategory::Hardware,
-        AppCategory::Media,
-        AppCategory::Modules,
+        AppCategory::Home, AppCategory::Settings, AppCategory::Hardware, AppCategory::Media, AppCategory::Modules,
     };
     return cats;
 }

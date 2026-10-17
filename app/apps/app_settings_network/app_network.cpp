@@ -42,8 +42,8 @@ enum class ToggleId {
 class AppNetwork;
 
 struct ActionBinding {
-    AppNetwork* app = nullptr;
-    ActionId id = ActionId::ScanWifi;
+    AppNetwork* app  = nullptr;
+    ActionId id      = ActionId::ScanWifi;
     lv_obj_t* button = nullptr;
 };
 
@@ -55,7 +55,7 @@ struct NetworkBinding {
 
 struct ToggleBinding {
     AppNetwork* app = nullptr;
-    ToggleId id = ToggleId::ExtAntenna;
+    ToggleId id     = ToggleId::ExtAntenna;
 };
 
 static const char* wifi_state_name(hal::HalBase::WifiConnectionState state)
@@ -120,22 +120,22 @@ private:
     std::vector<std::unique_ptr<NetworkBinding>> _networkRows;
     std::vector<hal::HalBase::WifiNetwork> _displayedNetworks;
     bool _networksRendered = false;
-    bool _scanPending = false;
-    bool _scanComplete = false;
-    bool _busy = false;
+    bool _scanPending      = false;
+    bool _scanComplete     = false;
+    bool _busy             = false;
     uint32_t _lastUpdateMs = 0;
 
-    lv_obj_t* _primary = nullptr;
-    lv_obj_t* _secondary = nullptr;
-    lv_obj_t* _status = nullptr;
-    lv_obj_t* _detail = nullptr;
-    lv_obj_t* _ssid = nullptr;
-    lv_obj_t* _password = nullptr;
+    lv_obj_t* _primary          = nullptr;
+    lv_obj_t* _secondary        = nullptr;
+    lv_obj_t* _status           = nullptr;
+    lv_obj_t* _detail           = nullptr;
+    lv_obj_t* _ssid             = nullptr;
+    lv_obj_t* _password         = nullptr;
     lv_obj_t* _extAntennaSwitch = nullptr;
-    lv_obj_t* _networkList = nullptr;
-    lv_obj_t* _networkSummary = nullptr;
-    lv_obj_t* _emptyNetworks = nullptr;
-    lv_obj_t* _apStatus = nullptr;
+    lv_obj_t* _networkList      = nullptr;
+    lv_obj_t* _networkSummary   = nullptr;
+    lv_obj_t* _emptyNetworks    = nullptr;
+    lv_obj_t* _apStatus         = nullptr;
 
     lv_obj_t* content() const
     {
@@ -144,10 +144,10 @@ private:
 
     lv_obj_t* bindButton(const char* text, int x, int y, int w, int h, app_ui::ButtonKind kind, ActionId id)
     {
-        auto binding = std::make_unique<ActionBinding>();
-        binding->app = this;
-        binding->id = id;
-        auto* button = app_ui::makeButton(content(), text, x, y, w, h, kind);
+        auto binding    = std::make_unique<ActionBinding>();
+        binding->app    = this;
+        binding->id     = id;
+        auto* button    = app_ui::makeButton(content(), text, x, y, w, h, kind);
         binding->button = button;
         lv_obj_add_event_cb(button, AppNetwork::onAction, LV_EVENT_CLICKED, binding.get());
         _actions.push_back(std::move(binding));
@@ -159,12 +159,12 @@ private:
         const auto layout = makeNetworkLayout();
         const auto& label = layout.antennaLabel;
         app_ui::makeFittedLabel(parent, text, label.x, label.y, label.w, label.h, &lv_font_montserrat_16,
-                               app_ui::theme::color(app_ui::theme::text), LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_LEFT);
+                                app_ui::theme::color(app_ui::theme::text), LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_LEFT);
         auto binding = std::make_unique<ToggleBinding>();
         binding->app = this;
-        binding->id = id;
-        auto* sw = app_ui::makeSwitch(parent, layout.extAntennaSwitch.x, layout.extAntennaSwitch.y,
-                                     layout.extAntennaSwitch.w, layout.extAntennaSwitch.h, initial);
+        binding->id  = id;
+        auto* sw     = app_ui::makeSwitch(parent, layout.extAntennaSwitch.x, layout.extAntennaSwitch.y,
+                                          layout.extAntennaSwitch.w, layout.extAntennaSwitch.h, initial);
         lv_obj_add_event_cb(sw, AppNetwork::onToggle, LV_EVENT_VALUE_CHANGED, binding.get());
         _toggles.push_back(std::move(binding));
         return sw;
@@ -174,31 +174,34 @@ private:
     {
         LvglLockGuard lock;
         auto layout = makeNetworkLayout();
-        _primary = app_ui::makeMetricCard(content(), "Wi-Fi", "--", layout.wifiCard.x, layout.wifiCard.y, layout.wifiCard.w, layout.wifiCard.h);
-        _secondary = app_ui::makeMetricCard(content(), "Address", "--", layout.addressCard.x, layout.addressCard.y, layout.addressCard.w, layout.addressCard.h);
-        _status = app_ui::makeWrappedLabel(content(),
-                                           "",
-                                           layout.statusText.x,
-                                           layout.statusText.y,
-                                           &lv_font_montserrat_18,
-                                           app_ui::theme::color(app_ui::theme::muted));
+        _primary    = app_ui::makeMetricCard(content(), "Wi-Fi", "--", layout.wifiCard.x, layout.wifiCard.y,
+                                             layout.wifiCard.w, layout.wifiCard.h);
+        _secondary  = app_ui::makeMetricCard(content(), "Address", "--", layout.addressCard.x, layout.addressCard.y,
+                                             layout.addressCard.w, layout.addressCard.h);
+        _status     = app_ui::makeWrappedLabel(content(), "", layout.statusText.x, layout.statusText.y,
+                                               &lv_font_montserrat_18, app_ui::theme::color(app_ui::theme::muted));
         lv_obj_set_width(_status, layout.statusText.w);
         lv_obj_set_height(_status, layout.statusText.h);
 
-        auto* form = app_ui::makePanel(content(), layout.stationPanel.x, layout.stationPanel.y, layout.stationPanel.w, layout.stationPanel.h);
-        app_ui::makeWrappedLabel(form, "Station Connection", 0, 0, &lv_font_montserrat_20, app_ui::theme::color(app_ui::theme::text));
-        _ssid = app_ui::makeTextArea(form, "SSID", layout.ssidInput.x, layout.ssidInput.y, layout.ssidInput.w, layout.ssidInput.h);
-        _password = app_ui::makeTextArea(form, "Password", layout.passwordInput.x, layout.passwordInput.y, layout.passwordInput.w, layout.passwordInput.h, true);
+        auto* form = app_ui::makePanel(content(), layout.stationPanel.x, layout.stationPanel.y, layout.stationPanel.w,
+                                       layout.stationPanel.h);
+        app_ui::makeWrappedLabel(form, "Station Connection", 0, 0, &lv_font_montserrat_20,
+                                 app_ui::theme::color(app_ui::theme::text));
+        _ssid     = app_ui::makeTextArea(form, "SSID", layout.ssidInput.x, layout.ssidInput.y, layout.ssidInput.w,
+                                         layout.ssidInput.h);
+        _password = app_ui::makeTextArea(form, "Password", layout.passwordInput.x, layout.passwordInput.y,
+                                         layout.passwordInput.w, layout.passwordInput.h, true);
         _shell->bindTextInput(_ssid);
         _shell->bindTextInput(_password);
         auto* networks = app_ui::makePanel(content(), layout.networksPanel.x, layout.networksPanel.y,
                                            layout.networksPanel.w, layout.networksPanel.h);
         app_ui::makeLabel(networks, "Nearby Networks", 0, 4, &lv_font_montserrat_20,
                           app_ui::theme::color(app_ui::theme::text));
-        _networkSummary = app_ui::makeFittedLabel(networks, "Scan to find networks", 0, 36, 380, 20,
-            &lv_font_montserrat_14, app_ui::theme::color(app_ui::theme::muted), LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_LEFT);
+        _networkSummary =
+            app_ui::makeFittedLabel(networks, "Scan to find networks", 0, 36, 380, 20, &lv_font_montserrat_14,
+                                    app_ui::theme::color(app_ui::theme::muted), LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_LEFT);
         const auto& list = layout.networksList;
-        _networkList = app_ui::makePanel(networks, list.x, list.y, list.w, list.h);
+        _networkList     = app_ui::makePanel(networks, list.x, list.y, list.w, list.h);
         lv_obj_set_style_pad_all(_networkList, 0, 0);
         lv_obj_set_style_border_width(_networkList, 0, 0);
         lv_obj_set_style_bg_opa(_networkList, LV_OPA_TRANSP, 0);
@@ -208,38 +211,30 @@ private:
         lv_obj_remove_flag(_networkList, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
         lv_obj_set_scroll_dir(_networkList, LV_DIR_VER);
         lv_obj_set_scrollbar_mode(_networkList, LV_SCROLLBAR_MODE_AUTO);
-        bindButton("Scan", layout.scanButton.x, layout.scanButton.y, layout.scanButton.w, layout.scanButton.h, app_ui::ButtonKind::Secondary, ActionId::ScanWifi);
-        bindButton("Connect", layout.connectButton.x, layout.connectButton.y, layout.connectButton.w, layout.connectButton.h, app_ui::ButtonKind::Primary, ActionId::ConnectWifi);
-        bindButton("Disconnect",
-                   layout.disconnectButton.x,
-                   layout.disconnectButton.y,
-                   layout.disconnectButton.w,
-                   layout.disconnectButton.h,
-                   app_ui::ButtonKind::Secondary,
-                   ActionId::DisconnectWifi);
-        bindButton("Forget", layout.forgetButton.x, layout.forgetButton.y, layout.forgetButton.w, layout.forgetButton.h, app_ui::ButtonKind::Danger, ActionId::ForgetWifi);
+        bindButton("Scan", layout.scanButton.x, layout.scanButton.y, layout.scanButton.w, layout.scanButton.h,
+                   app_ui::ButtonKind::Secondary, ActionId::ScanWifi);
+        bindButton("Connect", layout.connectButton.x, layout.connectButton.y, layout.connectButton.w,
+                   layout.connectButton.h, app_ui::ButtonKind::Primary, ActionId::ConnectWifi);
+        bindButton("Disconnect", layout.disconnectButton.x, layout.disconnectButton.y, layout.disconnectButton.w,
+                   layout.disconnectButton.h, app_ui::ButtonKind::Secondary, ActionId::DisconnectWifi);
+        bindButton("Forget", layout.forgetButton.x, layout.forgetButton.y, layout.forgetButton.w, layout.forgetButton.h,
+                   app_ui::ButtonKind::Danger, ActionId::ForgetWifi);
 
         auto* ap = app_ui::makePanel(content(), layout.apPanel.x, layout.apPanel.y, layout.apPanel.w, layout.apPanel.h);
-        app_ui::makeWrappedLabel(ap, "Access Point", 0, 0, &lv_font_montserrat_20, app_ui::theme::color(app_ui::theme::text));
-        _apStatus = app_ui::makeWrappedLabel(
-            ap,
-            "Stopped",
-            layout.apDescription.x,
-            layout.apDescription.y,
-            &lv_font_montserrat_16,
-            app_ui::theme::color(app_ui::theme::muted));
+        app_ui::makeWrappedLabel(ap, "Access Point", 0, 0, &lv_font_montserrat_20,
+                                 app_ui::theme::color(app_ui::theme::text));
+        _apStatus = app_ui::makeWrappedLabel(ap, "Stopped", layout.apDescription.x, layout.apDescription.y,
+                                             &lv_font_montserrat_16, app_ui::theme::color(app_ui::theme::muted));
         lv_obj_set_width(_apStatus, layout.apDescription.w);
         lv_obj_set_height(_apStatus, layout.apDescription.h);
         _extAntennaSwitch = bindToggle(ap, "External antenna", ToggleId::ExtAntenna, GetHAL()->getExtAntennaEnable());
-        bindButton("Start AP", layout.startApButton.x, layout.startApButton.y, layout.startApButton.w, layout.startApButton.h, app_ui::ButtonKind::Primary, ActionId::StartAp);
-        bindButton("Stop AP", layout.stopApButton.x, layout.stopApButton.y, layout.stopApButton.w, layout.stopApButton.h, app_ui::ButtonKind::Secondary, ActionId::StopAp);
+        bindButton("Start AP", layout.startApButton.x, layout.startApButton.y, layout.startApButton.w,
+                   layout.startApButton.h, app_ui::ButtonKind::Primary, ActionId::StartAp);
+        bindButton("Stop AP", layout.stopApButton.x, layout.stopApButton.y, layout.stopApButton.w,
+                   layout.stopApButton.h, app_ui::ButtonKind::Secondary, ActionId::StopAp);
 
-        _detail = app_ui::makeWrappedLabel(content(),
-                                           "",
-                                           layout.detailText.x,
-                                           layout.detailText.y,
-                                           &lv_font_montserrat_16,
-                                           app_ui::theme::color(app_ui::theme::muted));
+        _detail = app_ui::makeWrappedLabel(content(), "", layout.detailText.x, layout.detailText.y,
+                                           &lv_font_montserrat_16, app_ui::theme::color(app_ui::theme::muted));
         lv_obj_set_width(_detail, layout.detailText.w);
         lv_obj_set_height(_detail, layout.detailText.h);
         refresh();
@@ -249,17 +244,20 @@ private:
     {
         auto snapshot = _controller.refresh();
         if (_scanPending && !snapshot.busy) {
-            _scanPending = false;
+            _scanPending  = false;
             _scanComplete = true;
         }
-        _busy = snapshot.busy || snapshot.updateActive || snapshot.status.state == hal::HalBase::WifiConnectionState::Connecting ||
+        _busy = snapshot.busy || snapshot.updateActive ||
+                snapshot.status.state == hal::HalBase::WifiConnectionState::Connecting ||
                 snapshot.status.state == hal::HalBase::WifiConnectionState::Scanning;
         refreshMetric(_primary, "Wi-Fi", "%s", wifi_state_name(snapshot.status.state));
-        refreshMetric(_secondary, "Address", "%s", snapshot.status.ipAddress.empty() ? "--" : snapshot.status.ipAddress.c_str());
+        refreshMetric(_secondary, "Address", "%s",
+                      snapshot.status.ipAddress.empty() ? "--" : snapshot.status.ipAddress.c_str());
 
         if (_status != nullptr) {
-            const auto signal = snapshot.status.state == hal::HalBase::WifiConnectionState::Connected ?
-                                std::to_string(snapshot.status.rssi) + " dBm" : "--";
+            const auto signal = snapshot.status.state == hal::HalBase::WifiConnectionState::Connected
+                                    ? std::to_string(snapshot.status.rssi) + " dBm"
+                                    : "--";
             lv_label_set_text_fmt(_status, "SSID: %s\nRSSI: %s\nExt antenna: %s",
                                   snapshot.status.ssid.empty() ? "--" : snapshot.status.ssid.c_str(), signal.c_str(),
                                   snapshot.status.extAntennaEnabled ? "on" : "off");
@@ -282,8 +280,9 @@ private:
                 disabled = disabled || apRunning;
             } else if (action->id == ActionId::DisconnectWifi) {
                 const auto state = snapshot.status.state;
-                disabled = snapshot.busy || snapshot.updateActive || (state != hal::HalBase::WifiConnectionState::Connected &&
-                                             state != hal::HalBase::WifiConnectionState::Connecting);
+                disabled         = snapshot.busy || snapshot.updateActive ||
+                           (state != hal::HalBase::WifiConnectionState::Connected &&
+                            state != hal::HalBase::WifiConnectionState::Connecting);
             } else if (action->id == ActionId::StartAp) {
                 disabled = disabled || apRunning;
             } else if (action->id == ActionId::StopAp) {
@@ -338,73 +337,86 @@ private:
             text = snapshot.status.lastError;
         }
         lv_label_set_text(_detail, text.c_str());
-        lv_obj_set_style_text_color(_detail, app_ui::theme::color(
-            snapshot.status.state == hal::HalBase::WifiConnectionState::Failed ? app_ui::theme::red :
-                                                                               app_ui::theme::muted), 0);
+        lv_obj_set_style_text_color(
+            _detail,
+            app_ui::theme::color(snapshot.status.state == hal::HalBase::WifiConnectionState::Failed
+                                     ? app_ui::theme::red
+                                     : app_ui::theme::muted),
+            0);
     }
 
     void renderNetworks(const NetworkSnapshot& snapshot)
     {
-        const auto layout = makeNetworkLayout();
+        const auto layout     = makeNetworkLayout();
         const bool scrollable = networkRowsHeight(layout, snapshot.networks.size()) > layout.networksList.h;
-        if (_scanPending) lv_label_set_text(_networkSummary, "Scanning...");
-        else lv_label_set_text_fmt(_networkSummary, "%u networks%s",
-            static_cast<unsigned>(snapshot.networks.size()), scrollable ? " | Scroll to see all" : "");
+        if (_scanPending)
+            lv_label_set_text(_networkSummary, "Scanning...");
+        else
+            lv_label_set_text_fmt(_networkSummary, "%u networks%s", static_cast<unsigned>(snapshot.networks.size()),
+                                  scrollable ? " | Scroll to see all" : "");
         const bool changed = !_networksRendered || snapshot.networks.size() != _displayedNetworks.size() ||
-            !std::equal(snapshot.networks.begin(), snapshot.networks.end(), _displayedNetworks.begin(),
-                        [](const auto& a, const auto& b) {
-                            return a.ssid == b.ssid && a.rssi == b.rssi && a.secure == b.secure && a.channel == b.channel;
-                        });
+                             !std::equal(snapshot.networks.begin(), snapshot.networks.end(), _displayedNetworks.begin(),
+                                         [](const auto& a, const auto& b) {
+                                             return a.ssid == b.ssid && a.rssi == b.rssi && a.secure == b.secure &&
+                                                    a.channel == b.channel;
+                                         });
         if (changed) {
             lv_obj_clean(_networkList);
             lv_obj_scroll_to_y(_networkList, 0, LV_ANIM_OFF);
             _networkRows.clear();
-            _emptyNetworks = nullptr;
+            _emptyNetworks     = nullptr;
             _displayedNetworks = snapshot.networks;
-            _networksRendered = true;
+            _networksRendered  = true;
             if (_displayedNetworks.empty()) {
-                _emptyNetworks = app_ui::makeFittedLabel(_networkList, "", 16, 16, 520, 60,
-                    &lv_font_montserrat_18, app_ui::theme::color(app_ui::theme::muted),
-                    LV_LABEL_LONG_WRAP, LV_TEXT_ALIGN_LEFT);
+                _emptyNetworks = app_ui::makeFittedLabel(_networkList, "", 16, 16, 520, 60, &lv_font_montserrat_18,
+                                                         app_ui::theme::color(app_ui::theme::muted), LV_LABEL_LONG_WRAP,
+                                                         LV_TEXT_ALIGN_LEFT);
             }
             size_t index = 0;
             for (const auto& network : _displayedNetworks) {
-                auto binding = std::make_unique<NetworkBinding>();
-                binding->app = this;
-                binding->ssid = network.ssid;
+                auto binding       = std::make_unique<NetworkBinding>();
+                binding->app       = this;
+                binding->ssid      = network.ssid;
                 const auto rowRect = networkRowRect(layout, index++);
-                auto* row = app_ui::makeButtonSurface(_networkList, rowRect.x, rowRect.y, rowRect.w, rowRect.h,
-                    app_ui::theme::color(app_ui::theme::panelAlt), app_ui::theme::color(app_ui::theme::border), 1, 8);
-                binding->button = row;
+                auto* row          = app_ui::makeButtonSurface(_networkList, rowRect.x, rowRect.y, rowRect.w, rowRect.h,
+                                                               app_ui::theme::color(app_ui::theme::panelAlt),
+                                                               app_ui::theme::color(app_ui::theme::border), 1, 8);
+                binding->button    = row;
                 lv_obj_set_style_bg_color(row, app_ui::theme::color(app_ui::theme::blue), LV_STATE_CHECKED);
-                app_ui::makeFittedLabel(row, network.ssid.empty() ? "Hidden network" : network.ssid.c_str(),
-                    16, 5, 390, 40, &lv_font_montserrat_16, app_ui::theme::color(app_ui::theme::text),
-                    LV_LABEL_LONG_WRAP, LV_TEXT_ALIGN_LEFT);
+                app_ui::makeFittedLabel(row, network.ssid.empty() ? "Hidden network" : network.ssid.c_str(), 16, 5, 390,
+                                        40, &lv_font_montserrat_16, app_ui::theme::color(app_ui::theme::text),
+                                        LV_LABEL_LONG_WRAP, LV_TEXT_ALIGN_LEFT);
                 char security[64];
                 std::snprintf(security, sizeof(security), "%s | Channel %u", network.secure ? "Secured" : "Open",
                               static_cast<unsigned>(network.channel));
                 app_ui::makeFittedLabel(row, security, 16, 50, 390, 20, &lv_font_montserrat_14,
-                    app_ui::theme::color(app_ui::theme::muted), LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_LEFT);
+                                        app_ui::theme::color(app_ui::theme::muted), LV_LABEL_LONG_DOT,
+                                        LV_TEXT_ALIGN_LEFT);
                 char signal[24];
                 std::snprintf(signal, sizeof(signal), "%d dBm", network.rssi);
                 app_ui::makeFittedLabel(row, signal, 420, 26, 118, 24, &lv_font_montserrat_16,
-                    app_ui::theme::color(app_ui::theme::text), LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_RIGHT);
-                lv_obj_add_event_cb(row, [](lv_event_t* event) {
-                    auto* binding = static_cast<NetworkBinding*>(lv_event_get_user_data(event));
-                    if (!binding->app->_busy && !binding->ssid.empty()) {
-                        if (binding->ssid != lv_textarea_get_text(binding->app->_ssid)) {
-                            lv_textarea_set_text(binding->app->_ssid, binding->ssid.c_str());
-                            lv_textarea_set_text(binding->app->_password, "");
+                                        app_ui::theme::color(app_ui::theme::text), LV_LABEL_LONG_DOT,
+                                        LV_TEXT_ALIGN_RIGHT);
+                lv_obj_add_event_cb(
+                    row,
+                    [](lv_event_t* event) {
+                        auto* binding = static_cast<NetworkBinding*>(lv_event_get_user_data(event));
+                        if (!binding->app->_busy && !binding->ssid.empty()) {
+                            if (binding->ssid != lv_textarea_get_text(binding->app->_ssid)) {
+                                lv_textarea_set_text(binding->app->_ssid, binding->ssid.c_str());
+                                lv_textarea_set_text(binding->app->_password, "");
+                            }
+                            binding->app->refresh();
                         }
-                        binding->app->refresh();
-                    }
-                }, LV_EVENT_CLICKED, binding.get());
+                    },
+                    LV_EVENT_CLICKED, binding.get());
                 _networkRows.push_back(std::move(binding));
             }
         }
         if (_emptyNetworks != nullptr) {
-            lv_label_set_text(_emptyNetworks, _scanPending ? "Scanning..." :
-                              _scanComplete ? "No networks found" : "Not scanned");
+            lv_label_set_text(_emptyNetworks, _scanPending    ? "Scanning..."
+                                              : _scanComplete ? "No networks found"
+                                                              : "Not scanned");
         }
         for (const auto& row : _networkRows) {
             if (row->ssid == lv_textarea_get_text(_ssid) && !row->ssid.empty()) {
@@ -460,18 +472,18 @@ private:
     static NetworkCallbacks makeCallbacks()
     {
         NetworkCallbacks callbacks;
-        callbacks.status = [] { return GetHAL()->wifiGetStatus(); };
-        callbacks.scan = [] { return GetHAL()->wifiScan(); };
+        callbacks.status    = [] { return GetHAL()->wifiGetStatus(); };
+        callbacks.scan      = [] { return GetHAL()->wifiScan(); };
         callbacks.otaStatus = [] { return GetHAL()->otaGetStatus(); };
-        callbacks.connect = [](const std::string& ssid, const std::string& password) {
+        callbacks.connect   = [](const std::string& ssid, const std::string& password) {
             return GetHAL()->wifiConnect(ssid, password);
         };
-        callbacks.disconnect = [] { GetHAL()->wifiDisconnect(); };
+        callbacks.disconnect        = [] { GetHAL()->wifiDisconnect(); };
         callbacks.forgetCredentials = [] { GetHAL()->wifiForgetCredentials(); };
-        callbacks.setExtAntenna = [](bool enabled) { GetHAL()->wifiSetExtAntennaEnabled(enabled); };
-        callbacks.startAp = [] { return GetHAL()->wifiStartAccessPoint(); };
-        callbacks.stopAp = [] { GetHAL()->wifiStopAccessPoint(); };
-        callbacks.startJob = [](const std::string& name, std::function<void()> work) {
+        callbacks.setExtAntenna     = [](bool enabled) { GetHAL()->wifiSetExtAntennaEnabled(enabled); };
+        callbacks.startAp           = [] { return GetHAL()->wifiStartAccessPoint(); };
+        callbacks.stopAp            = [] { GetHAL()->wifiStopAccessPoint(); };
+        callbacks.startJob          = [](const std::string& name, std::function<void()> work) {
             return app_runtime::globalAsyncJobRunner().start(name.c_str(), std::move(work));
         };
         return callbacks;

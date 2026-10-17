@@ -27,9 +27,9 @@
 
 using namespace mooncake;
 
-static const std::string _tag = "app";
+static const std::string _tag      = "app";
 static lv_timer_t* _lifecycleTimer = nullptr;
-static uint64_t _renderStartedUs = 0;
+static uint64_t _renderStartedUs   = 0;
 
 static void updateLifecycle(lv_timer_t*)
 {
@@ -42,8 +42,7 @@ static void updateLifecycle(lv_timer_t*)
 #if defined(ESP_PLATFORM)
     static uint32_t lastResourcesMs = 0;
     if (started - lastResourcesMs >= 1000) {
-        perf.recordResources(heap_caps_get_free_size(MALLOC_CAP_8BIT),
-                             heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT),
+        perf.recordResources(heap_caps_get_free_size(MALLOC_CAP_8BIT), heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT),
                              uxTaskGetStackHighWaterMark(nullptr), uxTaskGetNumberOfTasks());
         lastResourcesMs = started;
     }
@@ -53,12 +52,19 @@ static void updateLifecycle(lv_timer_t*)
 static void displayEvent(lv_event_t* event)
 {
     const auto now = app_runtime::monotonicMicros();
-    auto& perf = app_runtime::globalPerformanceTelemetry();
+    auto& perf     = app_runtime::globalPerformanceTelemetry();
     switch (lv_event_get_code(event)) {
-        case LV_EVENT_RENDER_START: _renderStartedUs = now; break;
-        case LV_EVENT_RENDER_READY: perf.recordRender(_renderStartedUs, now); break;
-        case LV_EVENT_FLUSH_FINISH: perf.recordFlush(now); break;
-        default: break;
+        case LV_EVENT_RENDER_START:
+            _renderStartedUs = now;
+            break;
+        case LV_EVENT_RENDER_READY:
+            perf.recordRender(_renderStartedUs, now);
+            break;
+        case LV_EVENT_FLUSH_FINISH:
+            perf.recordFlush(now);
+            break;
+        default:
+            break;
     }
 }
 
@@ -90,9 +96,10 @@ void app::Init(InitCallback_t callback)
     lv_timer_ready(_lifecycleTimer);
     lv_display_add_event_cb(lv_display_get_default(), displayEvent, LV_EVENT_ALL, nullptr);
     for (auto* input = lv_indev_get_next(nullptr); input; input = lv_indev_get_next(input)) {
-        lv_indev_add_event_cb(input, [](lv_event_t*) {
-            app_runtime::globalPerformanceTelemetry().recordInput(app_runtime::monotonicMicros());
-        }, LV_EVENT_PRESSED, nullptr);
+        lv_indev_add_event_cb(
+            input,
+            [](lv_event_t*) { app_runtime::globalPerformanceTelemetry().recordInput(app_runtime::monotonicMicros()); },
+            LV_EVENT_PRESSED, nullptr);
     }
 }
 
@@ -104,7 +111,7 @@ void app::Update()
     {
         LvglLockGuard lock;
         const auto started = GetHAL()->millis();
-        next = lv_timer_handler();
+        next               = lv_timer_handler();
         app_runtime::globalPerformanceTelemetry().recordLvglHandler(started, GetHAL()->millis());
     }
     GetHAL()->delay(std::min<uint32_t>(next, 16));

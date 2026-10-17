@@ -38,7 +38,7 @@ private:
     std::shared_ptr<ScanState> _scanState;
     mutable std::mutex _mutex;
     std::string _statusText = "No scan run yet.";
-    bool _busy = false;
+    bool _busy              = false;
 };
 
 }  // namespace app_hardware_sd

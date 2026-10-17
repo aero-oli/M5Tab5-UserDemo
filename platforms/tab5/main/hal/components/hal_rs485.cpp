@@ -20,7 +20,9 @@ void uartWorker(void* arg)
         hal::UartMonitorWorker worker(state);
         while (worker.poll(
             [](uint8_t* data, size_t size) { return uart_read_bytes(port, data, size, pdMS_TO_TICKS(100)); },
-            [](const uint8_t* data, size_t size) { return uart_tx_chars(port, reinterpret_cast<const char*>(data), size); })) {
+            [](const uint8_t* data, size_t size) {
+                return uart_tx_chars(port, reinterpret_cast<const char*>(data), size);
+            })) {
             vTaskDelay(pdMS_TO_TICKS(10));
         }
         // Cancellation stops admission first. No HAL object or global GetHAL()
@@ -30,35 +32,43 @@ void uartWorker(void* arg)
     }
     vTaskDelete(nullptr);
 }
-} // namespace
+}  // namespace
 
 void HalEsp32::rs485_init()
 {
     const auto state = _uartMonitorState;
-    bool installed = false;
-    const auto fail = [&](const char* detail) {
+    bool installed   = false;
+    const auto fail  = [&](const char* detail) {
         state->fail(detail);
         const bool clean = !installed || uart_driver_delete(port) == ESP_OK;
         state->finishWorker(clean);
         ESP_LOGE("hal_rs485", "%s", detail);
     };
     const auto result = uart_driver_install(port, 254, 0, 0, nullptr, 0);
-    if (result != ESP_OK) { fail("UART driver installation failed"); return; }
+    if (result != ESP_OK) {
+        fail("UART driver installation failed");
+        return;
+    }
     installed = true;
-    uart_config_t config {};
-    config.baud_rate = 115200;
-    config.data_bits = UART_DATA_8_BITS;
-    config.parity = UART_PARITY_DISABLE;
-    config.stop_bits = UART_STOP_BITS_1;
-    config.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
+    uart_config_t config{};
+    config.baud_rate           = 115200;
+    config.data_bits           = UART_DATA_8_BITS;
+    config.parity              = UART_PARITY_DISABLE;
+    config.stop_bits           = UART_STOP_BITS_1;
+    config.flow_ctrl           = UART_HW_FLOWCTRL_DISABLE;
     config.rx_flow_ctrl_thresh = 122;
-    config.source_clk = UART_SCLK_DEFAULT;
+    config.source_clk          = UART_SCLK_DEFAULT;
     if (uart_param_config(port, &config) != ESP_OK ||
         uart_set_pin(port, txPin, rxPin, dePin, UART_PIN_NO_CHANGE) != ESP_OK ||
-        uart_set_mode(port, UART_MODE_RS485_HALF_DUPLEX) != ESP_OK ||
-        uart_set_rx_timeout(port, 3) != ESP_OK) { fail("UART configuration failed"); return; }
+        uart_set_mode(port, UART_MODE_RS485_HALF_DUPLEX) != ESP_OK || uart_set_rx_timeout(port, 3) != ESP_OK) {
+        fail("UART configuration failed");
+        return;
+    }
     auto* context = new (std::nothrow) std::shared_ptr<State>(state);
-    if (!context) { fail("UART worker allocation failed"); return; }
+    if (!context) {
+        fail("UART worker allocation failed");
+        return;
+    }
     {
         std::lock_guard<std::mutex> lock(state->mutex);
         state->workerRunning = state->driverActive = true;

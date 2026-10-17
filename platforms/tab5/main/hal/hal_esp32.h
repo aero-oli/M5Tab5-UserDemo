@@ -110,7 +110,8 @@ public:
     std::vector<uint8_t> i2cScan(bool isInternal) override;
     bool i2cProbe(hal::ModuleBus bus, uint8_t address) override;
     bool i2cReadRegister(hal::ModuleBus bus, uint8_t address, uint8_t reg, uint8_t* buffer, size_t length) override;
-    bool i2cWriteRegister(hal::ModuleBus bus, uint8_t address, uint8_t reg, const uint8_t* data, size_t length) override;
+    bool i2cWriteRegister(hal::ModuleBus bus, uint8_t address, uint8_t reg, const uint8_t* data,
+                          size_t length) override;
     void initPortAI2c() override;
     void deinitPortAI2c() override;
     std::vector<hal::GpioPinInfo> gpioGetPins() override;
@@ -120,15 +121,15 @@ public:
     hal::GpioOutputState gpioGetOutputState(uint8_t pin) override;
 
 private:
-    std::atomic<bool> _sdMounted {false};
+    std::atomic<bool> _sdMounted{false};
     static void readSleepTouch(lv_indev_t* indev, lv_indev_data_t* data);
     static HalEsp32* _sleepOwner;
     std::mutex _powerActionMutex;
     std::atomic<bool> _displayAsleep{false};
     hal::DisplaySleepGate _displaySleepGate;
-    lv_indev_t* _sleepInput = nullptr;
+    lv_indev_t* _sleepInput         = nullptr;
     lv_indev_read_cb_t _touchReader = nullptr;
-    uint8_t _wakeBrightness = 100;
+    uint8_t _wakeBrightness         = 100;
     void set_gpio_output_capability();
     void hid_init();
     void rs485_init();

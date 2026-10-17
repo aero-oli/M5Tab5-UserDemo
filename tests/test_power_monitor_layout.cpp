@@ -29,7 +29,7 @@ static void test_power_monitor_metric_grid_spacing_is_stable()
 
     for (int i = 1; i < app_hardware_power_monitor::kPowerMonitorMetricCount; ++i) {
         const auto previous = app_hardware_power_monitor::powerMonitorMetricRect(layout, i - 1);
-        const auto current = app_hardware_power_monitor::powerMonitorMetricRect(layout, i);
+        const auto current  = app_hardware_power_monitor::powerMonitorMetricRect(layout, i);
         assert(previous.x + previous.w + layout.colGap <= current.x);
     }
 }

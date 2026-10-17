@@ -69,8 +69,8 @@ std::string functionBodyFrom(const std::string& source, const std::string& signa
 
 int main()
 {
-    const fs::path repoRoot = fs::path(__FILE__).parent_path().parent_path();
-    const fs::path appsRoot = repoRoot / "app" / "apps";
+    const fs::path repoRoot                        = fs::path(__FILE__).parent_path().parent_path();
+    const fs::path appsRoot                        = repoRoot / "app" / "apps";
     const std::set<std::string> allowedScreenRoots = {
         "app/apps/ui/ui_components.cpp",
         "app/apps/ui/app_shell.cpp",
@@ -107,14 +107,14 @@ int main()
         if (!entry.is_regular_file()) {
             continue;
         }
-        const auto path = entry.path();
+        const auto path     = entry.path();
         const auto pathText = path.generic_string();
         if (!hasSuffix(pathText, ".cpp") && !hasSuffix(pathText, ".h")) {
             continue;
         }
 
         const auto relative = normalisedRelativePath(repoRoot, path);
-        const auto source = readFile(path);
+        const auto source   = readFile(path);
 
         if (contains(source, "lv_screen_active(") && allowedScreenRoots.count(relative) == 0) {
             failures.push_back(relative + " creates UI directly on lv_screen_active()");
@@ -158,7 +158,7 @@ int main()
     }
 
     const auto launcherSource = readFile(appsRoot / "app_launcher" / "view" / "view.cpp");
-    const auto renderTiles = functionBodyFrom(launcherSource, "void LauncherView::renderTiles()");
+    const auto renderTiles    = functionBodyFrom(launcherSource, "void LauncherView::renderTiles()");
     if (renderTiles.empty()) {
         failures.push_back("LauncherView::renderTiles() was not found");
     } else if (contains(renderTiles, "lv_obj_create(")) {
@@ -172,11 +172,13 @@ int main()
         failures.push_back("LauncherView::refreshStatus() must update labels in place, not rebuild objects");
     }
 
-    const auto selectCategory = functionBodyFrom(launcherSource, "void LauncherView::selectCategory(AppCategory category)");
+    const auto selectCategory =
+        functionBodyFrom(launcherSource, "void LauncherView::selectCategory(AppCategory category)");
     if (selectCategory.empty()) {
         failures.push_back("LauncherView::selectCategory() was not found");
     } else if (contains(selectCategory, "renderCategories(")) {
-        failures.push_back("LauncherView::selectCategory() must update category button state in place, not rebuild the rail");
+        failures.push_back(
+            "LauncherView::selectCategory() must update category button state in place, not rebuild the rail");
     }
 
     const auto installerSource = readFile(appsRoot / "app_installer.h");
@@ -184,7 +186,7 @@ int main()
         failures.push_back("app_installer.h must not block boot on the old startup animation");
     }
 
-    const auto assetHeader = readFile(repoRoot / "app" / "assets" / "assets.h");
+    const auto assetHeader                       = readFile(repoRoot / "app" / "assets" / "assets.h");
     const std::vector<std::string> retiredAssets = {
         "launcher_bg",
         "logo_tab",

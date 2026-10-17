@@ -24,14 +24,21 @@ void test_sample_updates_and_caches_readings()
 {
     hal::HalBase::PMData_t data;
     data.valid = data.hasSample = true;
-    data.busVoltage = 12.25f;
-    data.busPower = 18.5f;
-    data.shuntCurrent = 1.51f;
+    data.busVoltage             = 12.25f;
+    data.busPower               = 18.5f;
+    data.shuntCurrent           = 1.51f;
     std::promise<void> entered, release;
     auto gate = release.get_future().share();
     app_hardware_power_monitor::PowerMonitorController controller(
-        [&entered, gate] { entered.set_value(); gate.wait(); },
-        [data] { return data; }, [](int& value) { value = 46; return true; });
+        [&entered, gate] {
+            entered.set_value();
+            gate.wait();
+        },
+        [data] { return data; },
+        [](int& value) {
+            value = 46;
+            return true;
+        });
 
     auto request = std::async(std::launch::async, [&] { return controller.sample(); });
     assert(request.wait_for(std::chrono::milliseconds(100)) == std::future_status::ready);
@@ -59,22 +66,33 @@ void test_cached_sample_survives_blocked_refresh_and_destruction()
 {
     auto count = std::make_shared<int>(0);
     std::promise<void> entered, release, readDone;
-    auto gate = release.get_future().share();
+    auto gate       = release.get_future().share();
     auto controller = std::make_unique<app_hardware_power_monitor::PowerMonitorController>(
-        [count, &entered, gate] { if (++*count == 2) { entered.set_value(); gate.wait(); } },
+        [count, &entered, gate] {
+            if (++*count == 2) {
+                entered.set_value();
+                gate.wait();
+            }
+        },
         [count, &readDone] {
             hal::HalBase::PMData_t data;
             data.valid = data.hasSample = true;
-            data.busVoltage = 8.0f;
-            data.shuntCurrent = -0.5f;
-            if (*count == 2) { readDone.set_value(); }
+            data.busVoltage             = 8.0f;
+            data.shuntCurrent           = -0.5f;
+            if (*count == 2) {
+                readDone.set_value();
+            }
             return data;
-        }, [](int& value) { value = 42; return true; });
+        },
+        [](int& value) {
+            value = 42;
+            return true;
+        });
     controller->sample();
-    assert(waitForSample(*controller).outputPower == 0.0f); // Keep the measured zero; do not fabricate an estimate.
+    assert(waitForSample(*controller).outputPower == 0.0f);  // Keep the measured zero; do not fabricate an estimate.
     // Publication can precede the runner's completion bookkeeping.
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    auto started = entered.get_future();
+    auto started        = entered.get_future();
     while (started.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
         assert(std::chrono::steady_clock::now() < deadline);
         controller->sample();
@@ -102,16 +120,16 @@ void test_successful_zero_failure_and_stale_health()
     hardware.updatePowerMonitorData();
     auto data = hardware.getPowerMonitorData();
     assert(!data.valid && !data.hasSample && !data.error.empty());
-    app_hardware_power_monitor::PowerMonitorController controller(
-        [] {}, [&] { return hardware.getPowerMonitorData(); }, [](int&) { return false; });
+    app_hardware_power_monitor::PowerMonitorController controller([] {}, [&] { return hardware.getPowerMonitorData(); },
+                                                                  [](int&) { return false; });
     controller.sample();
     assert(app_runtime::AsyncJobRunner::waitForAll(5000));
     assert(!controller.cached().hasSample);
     assert(controller.statusText(controller.cached(), 100).find("Unavailable") != std::string::npos);
 
-    data = {};
+    data       = {};
     data.valid = data.hasSample = data.simulated = true;
-    data.sampledAtMs = 100;
+    data.sampledAtMs                             = 100;
     hardware.publishPowerMonitorData(data);
     controller.sample();
     assert(app_runtime::AsyncJobRunner::waitForAll(5000));
@@ -134,10 +152,10 @@ void test_formats_metric_values()
 {
     app_hardware_power_monitor::PowerSample sample;
     sample.hasSample = sample.cpuTempValid = true;
-    sample.busVoltage = 7.987f;
-    sample.current = -0.5123f;
-    sample.outputPower = 4.091f;
-    sample.cpuTempC = 45;
+    sample.busVoltage                      = 7.987f;
+    sample.current                         = -0.5123f;
+    sample.outputPower                     = 4.091f;
+    sample.cpuTempC                        = 45;
 
     assert(app_hardware_power_monitor::PowerMonitorController::formatVoltage(sample) == "7.99 V");
     assert(app_hardware_power_monitor::PowerMonitorController::formatCurrent(sample) == "-0.512 A");

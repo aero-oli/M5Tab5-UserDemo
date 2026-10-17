@@ -8,11 +8,17 @@ namespace rtc {
 // Caller serializes complete calendar operations with wake-timer operations.
 class Rx8130Calendar {
 public:
-    explicit Rx8130Calendar(modules::I2cDevice& device) : _device(device) {}
+    explicit Rx8130Calendar(modules::I2cDevice& device) : _device(device)
+    {
+    }
     bool read(tm& value, bool& needsInitialization);
     bool set(const tm& value, bool initialize, tm& actual);
-    bool clearWakeIrq(); // Never acknowledges VLF or rewrites clock/calendar.
-    const std::string& error() const { return _error; }
+    bool clearWakeIrq();  // Never acknowledges VLF or rewrites clock/calendar.
+    const std::string& error() const
+    {
+        return _error;
+    }
+
 private:
     bool readBytes(uint8_t reg, uint8_t* data, size_t count);
     bool writeBytes(uint8_t reg, const uint8_t* data, size_t count);
@@ -21,4 +27,4 @@ private:
     modules::I2cDevice& _device;
     std::string _error;
 };
-} // namespace rtc
+}  // namespace rtc

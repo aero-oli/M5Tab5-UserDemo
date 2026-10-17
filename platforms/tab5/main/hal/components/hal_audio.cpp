@@ -13,19 +13,19 @@
 
 namespace {
 using Operation = hal::HalBase::AudioOperation;
-using Phase = hal::HalBase::AudioPhase;
-using Token = hal::AudioSession::Token;
+using Phase     = hal::HalBase::AudioPhase;
+using Token     = hal::AudioSession::Token;
 
 // Process-lifetime state: library callbacks never reference an app or HAL object.
 hal::AudioSession session;
 app_runtime::AsyncJobRunner runner;
-std::atomic<uint8_t> volume {60};
-hal::AudioVolume outputVolume; // Touched only by the exclusive output owner.
-std::atomic<Token> musicToken {0};
-std::atomic<bool> musicStarted {false};
-std::atomic<bool> musicDone {false};
-bool playerReady = false; // Only the reserved audio worker touches these flags.
-bool callbackReady = false;
+std::atomic<uint8_t> volume{60};
+hal::AudioVolume outputVolume;  // Touched only by the exclusive output owner.
+std::atomic<Token> musicToken{0};
+std::atomic<bool> musicStarted{false};
+std::atomic<bool> musicDone{false};
+bool playerReady               = false;  // Only the reserved audio worker touches these flags.
+bool callbackReady             = false;
 constexpr uint16_t maxRecordMs = 10000;
 constexpr size_t maxPcmSamples = 48000 * 2 * 10;
 
@@ -43,11 +43,10 @@ bool check(Token token, esp_err_t result, const char* error)
 
 bool applyOutputVolume(Token token)
 {
-    return outputVolume.apply(volume.load(), [token](uint8_t value) {
-        return check(token, codec()->set_volume(value), "Audio volume setup failed");
-    }, [token](bool muted) {
-        return check(token, codec()->set_mute(muted), "Audio mute setup failed");
-    });
+    return outputVolume.apply(
+        volume.load(),
+        [token](uint8_t value) { return check(token, codec()->set_volume(value), "Audio volume setup failed"); },
+        [token](bool muted) { return check(token, codec()->set_mute(muted), "Audio mute setup failed"); });
 }
 
 bool prepareOutput(Token token)
@@ -84,21 +83,21 @@ bool recordPcm(Token token, std::vector<int16_t>& data, uint16_t durationMs, flo
     // The BSP uses this callback for ES7210 sample-info.channel (four TDM
     // slots), despite its historical i2s_slot_mode_t parameter type.
     if (!check(token, handle->codec_reconfig_fn(48000, 16, static_cast<i2s_slot_mode_t>(4)),
-               "Microphone clock setup failed")) return false;
+               "Microphone clock setup failed"))
+        return false;
     if (!check(token, handle->set_in_gain(gain), "Microphone gain setup failed")) return false;
     data.resize(static_cast<size_t>(48000) * 4 * durationMs / 1000);
     return hal::transferAudio(session, token, data.data(), data.size() * sizeof(int16_t),
-                             [handle](void* buffer, size_t length, size_t& done) {
-        return handle->i2s_read(buffer, length, &done, 1000) == ESP_OK;
-    });
+                              [handle](void* buffer, size_t length, size_t& done) {
+                                  return handle->i2s_read(buffer, length, &done, 1000) == ESP_OK;
+                              });
 }
 
 void finishPcm(Token token)
 {
     auto* handle = codec();
-    if (handle && handle->set_mute) outputVolume.mute([&](bool muted) {
-        return check(token, handle->set_mute(muted), "Audio mute failed");
-    });
+    if (handle && handle->set_mute)
+        outputVolume.mute([&](bool muted) { return check(token, handle->set_mute(muted), "Audio mute failed"); });
     session.finish(token);
 }
 
@@ -107,8 +106,7 @@ void startWorker(Operation operation, Phase phase, Work work)
 {
     const auto token = session.reserve(operation, phase);
     if (!token) return;
-    if (!runner.start("Audio", [token, work = std::move(work)]() mutable { work(token); }))
-        session.startFailed(token);
+    if (!runner.start("Audio", [token, work = std::move(work)]() mutable { work(token); })) session.startFailed(token);
 }
 
 void recordTest(Token token, bool dual)
@@ -117,7 +115,7 @@ void recordTest(Token token, bool dual)
     if (recordPcm(token, input, 3000, 240) && !session.cancelled(token)) {
         std::vector<int16_t> output(input.size() / 2);
         for (size_t frame = 0; frame < input.size() / 4; ++frame) {
-            output[frame * 2] = input[frame * 4 + (dual ? 0 : 3)];
+            output[frame * 2]     = input[frame * 4 + (dual ? 0 : 3)];
             output[frame * 2 + 1] = input[frame * 4 + (dual ? 2 : 3)];
         }
         session.setPhase(token, Phase::Playing);
@@ -132,9 +130,10 @@ esp_err_t musicMute(AUDIO_PLAYER_MUTE_SETTING setting)
     const auto token = musicToken.load();
     if (setting == AUDIO_PLAYER_UNMUTE && session.cancelled(token)) return ESP_FAIL;
     if (setting == AUDIO_PLAYER_UNMUTE) return applyOutputVolume(token) ? ESP_OK : ESP_FAIL;
-    return outputVolume.mute([token](bool muted) {
-        return check(token, codec()->set_mute(muted), "Audio mute failed");
-    }) ? ESP_OK : ESP_FAIL;
+    return outputVolume.mute(
+               [token](bool muted) { return check(token, codec()->set_mute(muted), "Audio mute failed"); })
+               ? ESP_OK
+               : ESP_FAIL;
 }
 
 esp_err_t musicClock(uint32_t rate, uint32_t bits, i2s_slot_mode_t channels)
@@ -149,7 +148,7 @@ esp_err_t musicClock(uint32_t rate, uint32_t bits, i2s_slot_mode_t channels)
 
 esp_err_t musicWrite(void* data, size_t length, size_t* written, uint32_t)
 {
-    *written = 0;
+    *written         = 0;
     const auto token = musicToken.load();
     if (!writePcm(token, data, length)) return ESP_FAIL;
     *written = length;
@@ -168,11 +167,11 @@ bool ensurePlayer(Token token)
 {
     if (!playerReady) {
         audio_player_config_t config = {
-            .mute_fn = musicMute,
+            .mute_fn    = musicMute,
             .clk_set_fn = musicClock,
-            .write_fn = musicWrite,
-            .priority = 8,
-            .coreID = 1,
+            .write_fn   = musicWrite,
+            .priority   = 8,
+            .coreID     = 1,
         };
         if (!check(token, audio_player_new(config), "Music player initialization failed")) return false;
         // This player and callbacks live for the process. Its idle task waits on its
@@ -204,7 +203,7 @@ void musicPlayback(Token token, const uint8_t* begin, const uint8_t* end)
         return;
     }
     if (!check(token, audio_player_play(file), "Could not queue music")) {
-        fclose(file); // The library owns the file only after successful enqueue.
+        fclose(file);  // The library owns the file only after successful enqueue.
         finishPcm(token);
         return;
     }
@@ -236,12 +235,30 @@ extern const uint8_t startup_sfx_mp3_end[] asm("_binary_startup_sfx_mp3_end");
 extern const uint8_t shutdown_sfx_mp3_start[] asm("_binary_shutdown_sfx_mp3_start");
 extern const uint8_t shutdown_sfx_mp3_end[] asm("_binary_shutdown_sfx_mp3_end");
 
-void HalEsp32::setSpeakerVolume(uint8_t value) { volume.store(std::min<uint8_t>(100, value)); }
-uint8_t HalEsp32::getSpeakerVolume() { return volume.load(); }
-hal::HalBase::AudioStatus HalEsp32::audioGetStatus() { return session.snapshot(); }
-void HalEsp32::audioCancel() { session.cancel(); }
-bool HalEsp32::stopAudioAndWait(uint32_t timeoutMs) { return session.stopAndWait(timeoutMs); }
-void HalEsp32::resumeAudio() { session.resume(); }
+void HalEsp32::setSpeakerVolume(uint8_t value)
+{
+    volume.store(std::min<uint8_t>(100, value));
+}
+uint8_t HalEsp32::getSpeakerVolume()
+{
+    return volume.load();
+}
+hal::HalBase::AudioStatus HalEsp32::audioGetStatus()
+{
+    return session.snapshot();
+}
+void HalEsp32::audioCancel()
+{
+    session.cancel();
+}
+bool HalEsp32::stopAudioAndWait(uint32_t timeoutMs)
+{
+    return session.stopAndWait(timeoutMs);
+}
+void HalEsp32::resumeAudio()
+{
+    session.resume();
+}
 
 void HalEsp32::audioRecord(std::vector<int16_t>& data, uint16_t durationMs, float gain)
 {
@@ -282,24 +299,38 @@ void HalEsp32::startHeadphoneMicRecordTest()
 {
     startWorker(Operation::HeadphoneMic, Phase::Recording, [](Token token) { recordTest(token, false); });
 }
-hal::HalBase::MicTestState_t HalEsp32::getDualMicRecordTestState() { return micState(); }
-hal::HalBase::MicTestState_t HalEsp32::getHeadphoneMicRecordTestState() { return micState(); }
+hal::HalBase::MicTestState_t HalEsp32::getDualMicRecordTestState()
+{
+    return micState();
+}
+hal::HalBase::MicTestState_t HalEsp32::getHeadphoneMicRecordTestState()
+{
+    return micState();
+}
 void HalEsp32::startPlayMusicTest()
 {
-    startWorker(Operation::Music, Phase::Starting, [](Token token) { musicPlayback(token, canon_in_d_mp3_start, canon_in_d_mp3_end); });
+    startWorker(Operation::Music, Phase::Starting,
+                [](Token token) { musicPlayback(token, canon_in_d_mp3_start, canon_in_d_mp3_end); });
 }
 hal::HalBase::MusicPlayState_t HalEsp32::getMusicPlayTestState()
 {
     const auto status = session.snapshot();
     return status.busy && (status.operation == Operation::Music || status.operation == Operation::Startup ||
-                           status.operation == Operation::Shutdown) ? MUSIC_PLAY_PLAYING : MUSIC_PLAY_IDLE;
+                           status.operation == Operation::Shutdown)
+               ? MUSIC_PLAY_PLAYING
+               : MUSIC_PLAY_IDLE;
 }
-void HalEsp32::stopPlayMusicTest() { audioCancel(); }
+void HalEsp32::stopPlayMusicTest()
+{
+    audioCancel();
+}
 void HalEsp32::playStartupSfx()
 {
-    startWorker(Operation::Startup, Phase::Starting, [](Token token) { musicPlayback(token, startup_sfx_mp3_start, startup_sfx_mp3_end); });
+    startWorker(Operation::Startup, Phase::Starting,
+                [](Token token) { musicPlayback(token, startup_sfx_mp3_start, startup_sfx_mp3_end); });
 }
 void HalEsp32::playShutdownSfx()
 {
-    startWorker(Operation::Shutdown, Phase::Starting, [](Token token) { musicPlayback(token, shutdown_sfx_mp3_start, shutdown_sfx_mp3_end); });
+    startWorker(Operation::Shutdown, Phase::Starting,
+                [](Token token) { musicPlayback(token, shutdown_sfx_mp3_start, shutdown_sfx_mp3_end); });
 }

@@ -17,8 +17,8 @@ struct DisplaySoundLayout {
     app_ui::Rect brightnessCard;
     app_ui::Rect volumeCard;
     int columnGap = 32;
-    int actionY = 252;
-    int actionH = 58;
+    int actionY   = 252;
+    int actionH   = 58;
     int actionGap = 16;
     app_ui::Rect infoPanel;
     app_ui::Rect infoText;
@@ -48,12 +48,12 @@ inline app_ui::Rect displaySoundActionRect(const DisplaySoundLayout& layout, int
 inline DisplaySoundLayout makeDisplaySoundLayout()
 {
     DisplaySoundLayout layout;
-    layout.content = displaySoundContentRect();
-    layout.description = {0, 0, layout.content.w, 32};
+    layout.content        = displaySoundContentRect();
+    layout.description    = {0, 0, layout.content.w, 32};
     layout.brightnessCard = {0, 72, 384, 150};
-    layout.volumeCard = {layout.brightnessCard.x + layout.brightnessCard.w + layout.columnGap, 72, 360, 150};
-    layout.infoPanel = {0, 348, 800, 126};
-    layout.infoText = {0, 0, layout.infoPanel.w - 32, 32};
+    layout.volumeCard     = {layout.brightnessCard.x + layout.brightnessCard.w + layout.columnGap, 72, 360, 150};
+    layout.infoPanel      = {0, 348, 800, 126};
+    layout.infoText       = {0, 0, layout.infoPanel.w - 32, 32};
     return layout;
 }
 

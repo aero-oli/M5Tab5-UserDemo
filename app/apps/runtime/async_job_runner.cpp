@@ -23,23 +23,29 @@ namespace {
 struct Jobs {
     std::mutex mutex;
     std::condition_variable changed;
-    size_t active = 0;
+    size_t active  = 0;
     bool accepting = true;
 };
-Jobs& jobs() { static Jobs value; return value; }
+Jobs& jobs()
+{
+    static Jobs value;
+    return value;
+}
 
 #if defined(ESP_PLATFORM)
 void runJob(void* arg)
 {
     auto* work = static_cast<std::function<void()>*>(arg);
     (*work)();
-    delete work; // FreeRTOS self-deletion does not unwind C++ locals.
+    delete work;  // FreeRTOS self-deletion does not unwind C++ locals.
     vTaskDelete(nullptr);
 }
 #endif
-}
+}  // namespace
 
-AsyncJobRunner::AsyncJobRunner() : _state(std::make_shared<State>()) {}
+AsyncJobRunner::AsyncJobRunner() : _state(std::make_shared<State>())
+{
+}
 
 bool AsyncJobRunner::start(const char* name, std::function<void()> job)
 {
@@ -51,14 +57,14 @@ bool AsyncJobRunner::start(const char* name, std::function<void()> job)
         if (!all.accepting) return false;
         std::lock_guard<std::mutex> lock(state->mutex);
         if (state->busy) return false;
-        state->busy = true;
+        state->busy       = true;
         state->currentJob = name ? name : "background job";
         ++all.active;
     }
     // Capture shared state, never the runner. Views may release a runner during work.
     auto work = [state, job = std::move(job)]() mutable {
         job();
-        job = {}; // Release callback captures before announcing dependency-safe completion.
+        job = {};  // Release callback captures before announcing dependency-safe completion.
         finish(state);
     };
 #if defined(ESP_PLATFORM)

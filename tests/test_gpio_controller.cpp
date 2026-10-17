@@ -15,16 +15,26 @@ struct Call {
 
 struct FakeGpio {
     hal::GpioClaimResult initResult = hal::GpioClaimResult::Claimed;
-    bool setOk = true;
-    int failedRelease = -1;
+    bool setOk                      = true;
+    int failedRelease               = -1;
     std::vector<Call> calls;
 
     GpioController controller()
     {
-        return GpioController(hal::tab5ExpansionPins(),
-            [this](uint8_t pin) { calls.push_back({Call::Init, pin, false}); return initResult; },
-            [this](uint8_t pin, bool high) { calls.push_back({Call::Set, pin, high}); return setOk; },
-            [this](uint8_t pin) { calls.push_back({Call::Reset, pin, false}); return pin != failedRelease; });
+        return GpioController(
+            hal::tab5ExpansionPins(),
+            [this](uint8_t pin) {
+                calls.push_back({Call::Init, pin, false});
+                return initResult;
+            },
+            [this](uint8_t pin, bool high) {
+                calls.push_back({Call::Set, pin, high});
+                return setOk;
+            },
+            [this](uint8_t pin) {
+                calls.push_back({Call::Reset, pin, false});
+                return pin != failedRelease;
+            });
     }
 };
 
@@ -140,7 +150,7 @@ void duplicateInventory()
     assert(controller.pins().size() == 1);
     assert(!controller.claim(49));
 }
-}
+}  // namespace
 
 int main()
 {

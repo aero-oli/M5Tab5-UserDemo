@@ -5,7 +5,7 @@
 
 static void test_pps_top_level_regions_fit_safe_content()
 {
-    const auto safe = app_pps::ppsContentRect();
+    const auto safe   = app_pps::ppsContentRect();
     const auto layout = app_pps::makePpsLayout();
 
     assert(app_ui::contains(safe, layout.statusStrip));

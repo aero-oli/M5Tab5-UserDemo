@@ -9,9 +9,9 @@ using State = hal::HalBase::CameraState;
 
 int main()
 {
-    int starts = 0;
-    int stops = 0;
-    bool acceptStart = true;
+    int starts           = 0;
+    int stops            = 0;
+    bool acceptStart     = true;
     lv_obj_t* lastCanvas = nullptr;
     hal::HalBase::CameraStatus snapshot{State::Stopped};
 
@@ -20,11 +20,11 @@ int main()
         ++starts;
         lastCanvas = canvas;
         if (!acceptStart) {
-            snapshot.state = State::Failed;
+            snapshot.state     = State::Failed;
             snapshot.lastError = "Could not start camera task";
             return false;
         }
-        snapshot = {};
+        snapshot       = {};
         snapshot.state = State::Starting;
         return true;
     };
@@ -75,7 +75,7 @@ int main()
 
     acceptStart = true;
     assert(controller.start(canvas));
-    snapshot.state = State::Failed;
+    snapshot.state     = State::Failed;
     snapshot.lastError = "Camera frame timeout";
     assert(!controller.isRunning());
     assert(controller.status().lastError == "Camera frame timeout");

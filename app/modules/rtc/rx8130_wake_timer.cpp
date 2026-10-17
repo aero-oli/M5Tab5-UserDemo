@@ -40,15 +40,21 @@ bool rtc::Rx8130WakeTimer::cancel()
 bool rtc::Rx8130WakeTimer::arm(uint16_t seconds)
 {
     _error.clear();
-    if (seconds == 0) { _error = "RTC wake interval must be positive"; return false; }
+    if (seconds == 0) {
+        _error = "RTC wake interval must be positive";
+        return false;
+    }
     uint8_t ext = 0, ctrl = 0;
     if (!cancel() || !read(extension, ext) || !read(control, ctrl)) return false;
-    if ((ctrl & 0xc0) != 0) { _error = "RTC clock is stopped or in test mode"; return false; }
+    if ((ctrl & 0xc0) != 0) {
+        _error = "RTC clock is stopped or in test mode";
+        return false;
+    }
     // Epson RX8130CE: TSEL=010 is 1 Hz; TBKE=0 counts on main and backup power.
-    ext = (ext & ~0x17) | 0x02;
-    ctrl = (ctrl & ~0x3d) | 0x10;
+    ext                     = (ext & ~0x17) | 0x02;
+    ctrl                    = (ctrl & ~0x3d) | 0x10;
     const uint8_t preset[2] = {static_cast<uint8_t>(seconds), static_cast<uint8_t>(seconds >> 8)};
-    uint8_t check[2] = {};
+    uint8_t check[2]        = {};
     if (!write(extension, ext) || !_device.writeRegister(counter, preset, 2) ||
         !_device.readRegister(counter, check, 2) || check[0] != preset[0] || check[1] != preset[1] ||
         !write(control, ctrl) || !write(extension, ext | 0x10)) {
@@ -58,8 +64,8 @@ bool rtc::Rx8130WakeTimer::arm(uint16_t seconds)
         return false;
     }
     uint8_t actualExt = 0, actualCtrl = 0;
-    if (!read(extension, actualExt) || !read(control, actualCtrl) ||
-        (actualExt & 0x17) != 0x12 || (actualCtrl & 0xfd) != (ctrl & 0xfd)) {
+    if (!read(extension, actualExt) || !read(control, actualCtrl) || (actualExt & 0x17) != 0x12 ||
+        (actualCtrl & 0xfd) != (ctrl & 0xfd)) {
         cancel();
         _error = "RTC wake timer enable not verified";
         return false;

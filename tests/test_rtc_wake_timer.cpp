@@ -17,8 +17,14 @@ struct Device : modules::I2cDevice {
         data[0x1a] = {0, 0};
         data[0x10] = {0x49, 0x01, 0x12, 0x01, 0x11, 0x10, 0x26};
     }
-    bool probe() override { return true; }
-    uint8_t address() const override { return 0x32; }
+    bool probe() override
+    {
+        return true;
+    }
+    uint8_t address() const override
+    {
+        return 0x32;
+    }
     bool readRegister(uint8_t reg, uint8_t* out, size_t count) override
     {
         if (calls++ == failure || data[reg].size() != count) return false;

@@ -14,8 +14,8 @@ inline constexpr int kDiagnosticsMetricCount = 4;
 struct DiagnosticsLayout {
     app_ui::Rect content;
     app_ui::Rect description;
-    int cardW = 280;
-    int cardH = 132;
+    int cardW  = 280;
+    int cardH  = 132;
     int colGap = 24;
     int startY = 72;
     app_ui::Rect detailPanel;
@@ -36,12 +36,12 @@ inline app_ui::Rect diagnosticsMetricRect(const DiagnosticsLayout& layout, int i
 inline DiagnosticsLayout makeDiagnosticsLayout()
 {
     DiagnosticsLayout layout;
-    layout.content = diagnosticsContentRect();
-    layout.description = {0, 0, layout.content.w, 32};
+    layout.content         = diagnosticsContentRect();
+    layout.description     = {0, 0, layout.content.w, 32};
     const auto firstMetric = diagnosticsMetricRect(layout, 0);
-    layout.detailPanel = {0, firstMetric.y + firstMetric.h + 32, 1192, 220};
-    layout.detailHint = {0, 0, layout.detailPanel.w - 32, 56};
-    layout.detailText = {0, 72, layout.detailPanel.w - 32, layout.detailPanel.h - 96};
+    layout.detailPanel     = {0, firstMetric.y + firstMetric.h + 32, 1192, 220};
+    layout.detailHint      = {0, 0, layout.detailPanel.w - 32, 56};
+    layout.detailText      = {0, 72, layout.detailPanel.w - 32, layout.detailPanel.h - 96};
     return layout;
 }
 

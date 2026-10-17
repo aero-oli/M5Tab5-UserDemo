@@ -29,7 +29,7 @@ static void test_imu_metric_grid_spacing_is_stable()
 
     for (int i = 1; i < app_hardware_imu::kImuMetricCount; ++i) {
         const auto previous = app_hardware_imu::imuMetricRect(layout, i - 1);
-        const auto current = app_hardware_imu::imuMetricRect(layout, i);
+        const auto current  = app_hardware_imu::imuMetricRect(layout, i);
         if (i % layout.cols == 0) {
             assert(previous.y + previous.h + layout.rowGap <= current.y);
         } else {

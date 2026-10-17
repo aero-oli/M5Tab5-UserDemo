@@ -7,7 +7,10 @@
 #include <thread>
 #include <vector>
 
-hal::HalBase* hal::Get() { return nullptr; }
+hal::HalBase* hal::Get()
+{
+    return nullptr;
+}
 using namespace app_settings_power;
 using namespace std::chrono_literals;
 
@@ -28,8 +31,8 @@ struct FakePower {
         ++samples;
         hal::HalBase::PMData_t data;
         data.valid = data.hasSample = finite;
-        data.busVoltage = finite ? 8.12f : std::numeric_limits<float>::quiet_NaN();
-        data.busPower = 2.5f;
+        data.busVoltage             = finite ? 8.12f : std::numeric_limits<float>::quiet_NaN();
+        data.busPower               = 2.5f;
         return data;
     }
     hal::PowerResult perform(PowerAction action, uint16_t minutes)
@@ -42,7 +45,11 @@ struct FakePower {
         asleep = action == PowerAction::SleepTouch;
         return {true, asleep, true, asleep ? "Display off" : "Simulated shutdown"};
     }
-    bool sleeping() { std::lock_guard<std::mutex> lock(mutex); return asleep; }
+    bool sleeping()
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        return asleep;
+    }
     bool wake()
     {
         std::lock_guard<std::mutex> lock(mutex);
@@ -60,7 +67,8 @@ static std::unique_ptr<PowerSettingsController> controller(std::shared_ptr<FakeP
         [fake] { return fake->sleeping(); }, [fake] { return fake->wake(); });
 }
 
-template<class Predicate> static void wait(Predicate predicate)
+template <class Predicate>
+static void wait(Predicate predicate)
 {
     const auto deadline = std::chrono::steady_clock::now() + 2s;
     while (!predicate()) {
@@ -72,12 +80,13 @@ template<class Predicate> static void wait(Predicate predicate)
 static void testConfirmationAndValidation()
 {
     auto fake = std::make_shared<FakePower>();
-    auto c = controller(fake);
+    auto c    = controller(fake);
     assert(!c->confirm());
     assert(!c->request(static_cast<PowerAction>(99)));
     assert(!c->request(PowerAction::SleepRtc, 0));
     assert(!c->request(PowerAction::SleepRtc, 61));
-    for (auto action : {PowerAction::SleepTouch, PowerAction::SleepShake, PowerAction::SleepRtc, PowerAction::PowerOff}) {
+    for (auto action :
+         {PowerAction::SleepTouch, PowerAction::SleepShake, PowerAction::SleepRtc, PowerAction::PowerOff}) {
         assert(c->request(action));
         assert(c->state().state == PowerState::Confirming);
         assert(!c->request(PowerAction::PowerOff));
@@ -96,9 +105,9 @@ static void testConfirmationAndValidation()
 
 static void testBlockedSamplingDoesNotBlockUiOrLoseConfirmedCommand()
 {
-    auto fake = std::make_shared<FakePower>();
+    auto fake        = std::make_shared<FakePower>();
     fake->holdSample = true;
-    auto c = controller(fake);
+    auto c           = controller(fake);
     c->update(0);
     {
         std::unique_lock<std::mutex> lock(fake->mutex);
@@ -114,13 +123,16 @@ static void testBlockedSamplingDoesNotBlockUiOrLoseConfirmedCommand()
         fake->holdSample = false;
         fake->changed.notify_all();
     }
-    wait([&] { std::lock_guard<std::mutex> lock(fake->mutex); return fake->calls.size() == 1; });
+    wait([&] {
+        std::lock_guard<std::mutex> lock(fake->mutex);
+        return fake->calls.size() == 1;
+    });
 }
 
 static void testSamplingAndDisplayWake()
 {
     auto fake = std::make_shared<FakePower>();
-    auto c = controller(fake);
+    auto c    = controller(fake);
     c->update(0);
     wait([&] { return c->state().hasSample; });
     assert(c->state().sample.busVoltage == 8.12f);
@@ -146,9 +158,9 @@ static void testSamplingAndDisplayWake()
 
 static void testFailureAndRecovery()
 {
-    auto fake = std::make_shared<FakePower>();
+    auto fake  = std::make_shared<FakePower>();
     fake->fail = true;
-    auto c = controller(fake);
+    auto c     = controller(fake);
     assert(c->request(PowerAction::SleepShake) && c->confirm());
     wait([&] { return c->state().state == PowerState::Failed; });
     assert(c->state().message == "Injected failure");

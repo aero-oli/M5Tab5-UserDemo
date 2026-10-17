@@ -24,7 +24,7 @@ static std::map<uint8_t, std::vector<uint8_t>>& pps_registers()
     static std::map<uint8_t, std::vector<uint8_t>> registers;
     static bool initialized = false;
 
-    auto set_byte = [&](uint8_t reg, uint8_t value) { registers[reg] = {value}; };
+    auto set_byte  = [&](uint8_t reg, uint8_t value) { registers[reg] = {value}; };
     auto set_float = [&](uint8_t reg, float value) {
         std::vector<uint8_t> bytes(4);
         memcpy(bytes.data(), &value, sizeof(value));
@@ -45,18 +45,18 @@ static std::map<uint8_t, std::vector<uint8_t>>& pps_registers()
         set_float(0x1C, 1.0f);
         registers[0x52] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC};
         registers[0x5F] = {0x35};
-        initialized = true;
+        initialized     = true;
     }
 
     bool enabled = registers[0x04][0] != 0;
-    float vset = 0.0f;
-    float iset = 0.0f;
+    float vset   = 0.0f;
+    float iset   = 0.0f;
     memcpy(&vset, registers[0x18].data(), sizeof(vset));
     memcpy(&iset, registers[0x1C].data(), sizeof(iset));
 
     float ripple = (rand() % 100) / 5000.0f;
-    float vout = enabled ? (vset - ripple) : 0.0f;
-    float iout = enabled ? std::min(iset, 0.65f + static_cast<float>(rand() % 20) / 100.0f) : 0.0f;
+    float vout   = enabled ? (vset - ripple) : 0.0f;
+    float iout   = enabled ? std::min(iset, 0.65f + static_cast<float>(rand() % 20) / 100.0f) : 0.0f;
     set_float(0x08, vout);
     set_float(0x0C, iout);
     set_float(0x10, 31.0f + static_cast<float>(rand() % 40) / 10.0f);
@@ -89,7 +89,7 @@ uint32_t HalDesktop::millis()
 bool HalDesktop::readCpuTemp(int& value)
 {
     value = getCpuTemp();
-    return true; // Synthetic desktop sensor, labelled by the PM snapshot.
+    return true;  // Synthetic desktop sensor, labelled by the PM snapshot.
 }
 
 int HalDesktop::getCpuTemp()
@@ -128,11 +128,11 @@ void HalDesktop::updatePowerMonitorData()
     static std::uniform_real_distribution<> dis(0.95, 1.0);
 
     PMData_t data;
-    data.busVoltage = dis(gen) * 8.0f;
+    data.busVoltage   = dis(gen) * 8.0f;
     data.shuntCurrent = -dis(gen) * 0.5f;
-    data.busPower = data.busVoltage * -data.shuntCurrent;
+    data.busPower     = data.busVoltage * -data.shuntCurrent;
     data.valid = data.hasSample = data.simulated = true;
-    data.sampledAtMs = millis();
+    data.sampledAtMs                             = millis();
     publishPowerMonitorData(data);
 }
 
@@ -162,7 +162,10 @@ hal::PowerResult HalDesktop::performPowerAction(hal::PowerAction action, uint16_
     return {false, false, true, "Unknown power action"};
 }
 
-bool HalDesktop::isDisplayAsleep() { return _displayAsleep.load(); }
+bool HalDesktop::isDisplayAsleep()
+{
+    return _displayAsleep.load();
+}
 bool HalDesktop::wakeDisplay()
 {
     LvglLockGuard lock;
@@ -188,7 +191,7 @@ void HalDesktop::updateImuData()
     data.accelY = dis(gen);
     data.accelZ = dis(gen);
     data.valid = data.hasSample = data.simulated = true;
-    data.sampledAtMs = millis();
+    data.sampledAtMs                             = millis();
     publishImuData(data);
 }
 
@@ -244,7 +247,7 @@ bool HalDesktop::getExt5vEnable()
 /* -------------------------------------------------------------------------- */
 bool HalDesktop::isSdCardMounted()
 {
-    return false; // Desktop directory scans do not mount hardware.
+    return false;  // Desktop directory scans do not mount hardware.
 }
 
 hal::HalBase::SdScanResult HalDesktop::scanSdCardResult(const std::string& dirPath)
@@ -252,7 +255,7 @@ hal::HalBase::SdScanResult HalDesktop::scanSdCardResult(const std::string& dirPa
     SdScanResult result{SdScanStatus::Success, {}, {}, true};
     std::error_code error;
     const char* fixtureRoot = std::getenv("M5TAB5_DESKTOP_SD_ROOT");
-    const std::string path = fixtureRoot && dirPath == "/" ? fixtureRoot : dirPath;
+    const std::string path  = fixtureRoot && dirPath == "/" ? fixtureRoot : dirPath;
     std::filesystem::directory_iterator it(path, error), end;
     if (error) return {SdScanStatus::ReadFailed, {}, "Could not open desktop directory: " + error.message(), true};
     for (; it != end; it.increment(error)) {
@@ -273,21 +276,21 @@ void HalDesktop::updateInterfaceData()
     std::lock_guard<std::mutex> ioLock(_interfaceIoMutex);
     const char* fail = std::getenv("M5TAB5_DESKTOP_INTERFACE_FAIL");
     if (fail && fail[0] == '1') {
-        auto data = getInterfaceData();
-        data.valid = false;
+        auto data      = getInterfaceData();
+        data.valid     = false;
         data.simulated = true;
-        data.error = "Simulated interface read failure";
+        data.error     = "Simulated interface read failure";
         publishInterfaceData(data);
         return;
     }
     InterfaceData data;
-    data.valid = true;
-    data.hasSample = true;
-    data.simulated = true;
-    data.usbCKnown = true;
+    data.valid          = true;
+    data.hasSample      = true;
+    data.simulated      = true;
+    data.usbCKnown      = true;
     data.headphoneKnown = true;
-    data.usbAKnown = false;
-    data.sampledAtMs = millis();
+    data.usbAKnown      = false;
+    data.sampledAtMs    = millis();
     publishInterfaceData(data);
 }
 
@@ -331,7 +334,10 @@ bool HalDesktop::i2cProbe(hal::ModuleBus bus, uint8_t address)
     return bus == hal::ModuleBus::MBus && address == 0x35;
 }
 
-std::vector<hal::GpioPinInfo> HalDesktop::gpioGetPins() { return hal::tab5ExpansionPins(); }
+std::vector<hal::GpioPinInfo> HalDesktop::gpioGetPins()
+{
+    return hal::tab5ExpansionPins();
+}
 
 namespace {
 bool gpioFault(const char* action)
@@ -339,7 +345,7 @@ bool gpioFault(const char* action)
     const auto* fault = std::getenv("M5TAB5_DESKTOP_GPIO_FAIL");
     return fault != nullptr && std::strcmp(fault, action) == 0;
 }
-}
+}  // namespace
 
 hal::GpioClaimResult HalDesktop::gpioInitOutput(uint8_t pin)
 {
@@ -354,8 +360,8 @@ hal::GpioClaimResult HalDesktop::gpioInitOutput(uint8_t pin)
 bool HalDesktop::gpioSetLevel(uint8_t pin, bool level)
 {
     std::lock_guard<std::mutex> lock(_gpioMutex);
-    if (pin >= _gpioOutputs.size() || !hal::gpioOutputAllowed(gpioGetPins(), pin) ||
-        !_gpioOutputs[pin].claimed || !_gpioOutputs[pin].levelKnown) {
+    if (pin >= _gpioOutputs.size() || !hal::gpioOutputAllowed(gpioGetPins(), pin) || !_gpioOutputs[pin].claimed ||
+        !_gpioOutputs[pin].levelKnown) {
         return false;
     }
     auto& state = _gpioOutputs[pin];
@@ -395,7 +401,7 @@ bool HalDesktop::i2cReadRegister(hal::ModuleBus bus, uint8_t address, uint8_t re
     }
 
     auto& registers = pps_registers();
-    auto it = registers.find(reg);
+    auto it         = registers.find(reg);
     if (it == registers.end() || it->second.size() < length) {
         return false;
     }
@@ -413,7 +419,7 @@ bool HalDesktop::i2cWriteRegister(hal::ModuleBus bus, uint8_t address, uint8_t r
     if (reg == 0x04 && length == 1 && data[0] == 0 && std::getenv("M5TAB5_DESKTOP_PPS_OFF_FAIL")) return false;
 
     auto& registers = pps_registers();
-    registers[reg] = std::vector<uint8_t>(data, data + length);
+    registers[reg]  = std::vector<uint8_t>(data, data + length);
     return true;
 }
 

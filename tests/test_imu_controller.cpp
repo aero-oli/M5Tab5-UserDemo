@@ -22,7 +22,7 @@ void test_health()
     assert(controller.statusText(controller.cached(), 100).find("Unavailable") != std::string::npos);
     hal::HalBase::IMUData_t zero;
     zero.valid = zero.hasSample = zero.simulated = true;
-    zero.sampledAtMs = 100;
+    zero.sampledAtMs                             = 100;
     hardware.publishImuData(zero);
     controller.sample();
     assert(app_runtime::AsyncJobRunner::waitForAll(5000));
@@ -46,13 +46,23 @@ int main()
     auto gate = release.get_future().share();
     hal::HalBase::IMUData_t data;
     data.valid = data.hasSample = true;
-    data.accelX = 0.1234f;
-    data.accelY = -0.5f;
-    data.accelZ = 1.0f;
-    data.gyroX = 12.25f;
-    auto controller = std::make_unique<app_hardware_imu::ImuController>(
-        [count, &entered, gate] { if (++*count == 2) { entered.set_value(); gate.wait(); } },
-        [data, count, &readDone] { if (*count == 2) { readDone.set_value(); } return data; });
+    data.accelX                 = 0.1234f;
+    data.accelY                 = -0.5f;
+    data.accelZ                 = 1.0f;
+    data.gyroX                  = 12.25f;
+    auto controller             = std::make_unique<app_hardware_imu::ImuController>(
+        [count, &entered, gate] {
+            if (++*count == 2) {
+                entered.set_value();
+                gate.wait();
+            }
+        },
+        [data, count, &readDone] {
+            if (*count == 2) {
+                readDone.set_value();
+            }
+            return data;
+        });
     const auto first = controller->sample();
     assert(!first.hasSample && first.pending);
     auto deadline = steady_clock::now() + seconds(2);
@@ -66,7 +76,7 @@ int main()
     assert(app_hardware_imu::ImuController::formatAccel(sample.accelY) == "-0.500 g");
     assert(app_hardware_imu::ImuController::formatGyro(sample.gyroX) == "12.25 dps");
     auto started = entered.get_future();
-    deadline = steady_clock::now() + seconds(2);
+    deadline     = steady_clock::now() + seconds(2);
     while (started.wait_for(milliseconds(0)) != std::future_status::ready) {
         assert(steady_clock::now() < deadline);
         controller->sample();

@@ -18,7 +18,7 @@
 
 using namespace mooncake;
 namespace {
-const std::string _tag = "desktop-smoke";
+const std::string _tag   = "desktop-smoke";
 void (*_pumpLifecycle)() = nullptr;
 
 // Smoke journeys drive the same timer as normal runtime; they never bypass its owner.
@@ -27,12 +27,12 @@ static void desktopPumpLifecycle()
     _pumpLifecycle();
 }
 
-static uint32_t _desktopUpdateCount = 0;
-static uint32_t _desktopMaxUpdates = 0;
-static bool _desktopAssertLauncherUi = false;
+static uint32_t _desktopUpdateCount    = 0;
+static uint32_t _desktopMaxUpdates     = 0;
+static bool _desktopAssertLauncherUi   = false;
 static bool _desktopLauncherUiAsserted = false;
-static bool _desktopAssertAllAppsUi = false;
-static bool _desktopAllAppsUiAsserted = false;
+static bool _desktopAssertAllAppsUi    = false;
+static bool _desktopAllAppsUiAsserted  = false;
 
 static uint32_t desktopMaxUpdatesFromEnv()
 {
@@ -41,7 +41,7 @@ static uint32_t desktopMaxUpdatesFromEnv()
         return 0;
     }
 
-    char* end = nullptr;
+    char* end         = nullptr;
     const auto parsed = std::strtoul(raw, &end, 10);
     if (end == raw || parsed == 0 || parsed > UINT32_MAX) {
         return 0;
@@ -56,7 +56,7 @@ static bool desktopEnvEnabled(const char* name)
 }
 
 struct DesktopUiSnapshot {
-    uint32_t objectCount = 0;
+    uint32_t objectCount          = 0;
     uint32_t fullScreenChildCount = 0;
 };
 
@@ -65,7 +65,7 @@ static lv_obj_tree_walk_res_t desktopCountUiObjects(lv_obj_t* obj, void* userDat
     auto* snapshot = static_cast<DesktopUiSnapshot*>(userData);
     ++snapshot->objectCount;
 
-    const auto displayWidth = GetHAL()->getDisplayWidth();
+    const auto displayWidth  = GetHAL()->getDisplayWidth();
     const auto displayHeight = GetHAL()->getDisplayHeight();
     if (lv_obj_get_parent(obj) == lv_screen_active() && lv_obj_get_width(obj) >= displayWidth &&
         lv_obj_get_height(obj) >= displayHeight) {
@@ -83,8 +83,8 @@ static bool desktopLauncherUiLooksReady()
     }
     lv_obj_update_layout(screen);
 
-    lv_obj_t* topRoot = nullptr;
-    const auto displayWidth = GetHAL()->getDisplayWidth();
+    lv_obj_t* topRoot        = nullptr;
+    const auto displayWidth  = GetHAL()->getDisplayWidth();
     const auto displayHeight = GetHAL()->getDisplayHeight();
     for (int32_t i = static_cast<int32_t>(lv_obj_get_child_count(screen)) - 1; i >= 0; --i) {
         auto* child = lv_obj_get_child(screen, static_cast<uint32_t>(i));
@@ -122,7 +122,7 @@ static lv_obj_t* desktopTopFullscreenRoot()
     }
     lv_obj_update_layout(screen);
 
-    const auto displayWidth = GetHAL()->getDisplayWidth();
+    const auto displayWidth  = GetHAL()->getDisplayWidth();
     const auto displayHeight = GetHAL()->getDisplayHeight();
     for (int32_t i = static_cast<int32_t>(lv_obj_get_child_count(screen)) - 1; i >= 0; --i) {
         auto* child = lv_obj_get_child(screen, static_cast<uint32_t>(i));
@@ -135,7 +135,7 @@ static lv_obj_t* desktopTopFullscreenRoot()
 
 struct DesktopBoundsValidation {
     const char* context = "";
-    bool valid = true;
+    bool valid          = true;
 };
 
 static const char* desktopObjectKind(lv_obj_t* obj)
@@ -171,9 +171,9 @@ static void desktopValidateBoundsRecursive(lv_obj_t* parent, DesktopBoundsValida
     }
 
     const bool parentScrollable = lv_obj_has_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
-    const int32_t parentWidth = lv_obj_get_width(parent);
-    const int32_t parentHeight = lv_obj_get_height(parent);
-    const uint32_t childCount = lv_obj_get_child_count(parent);
+    const int32_t parentWidth   = lv_obj_get_width(parent);
+    const int32_t parentHeight  = lv_obj_get_height(parent);
+    const uint32_t childCount   = lv_obj_get_child_count(parent);
     lv_area_t parentArea;
     lv_obj_get_coords(parent, &parentArea);
 
@@ -190,8 +190,8 @@ static void desktopValidateBoundsRecursive(lv_obj_t* parent, DesktopBoundsValida
             const int32_t y = childArea.y1;
             const int32_t w = lv_obj_get_width(child);
             const int32_t h = lv_obj_get_height(child);
-            if (x < parentArea.x1 || y < parentArea.y1 || w <= 0 || h <= 0 ||
-                childArea.x2 > parentArea.x2 || childArea.y2 > parentArea.y2) {
+            if (x < parentArea.x1 || y < parentArea.y1 || w <= 0 || h <= 0 || childArea.x2 > parentArea.x2 ||
+                childArea.y2 > parentArea.y2) {
                 mclog::tagError(_tag,
                                 "desktop UI bounds failed in {}: {} child {} at {},{} {}x{} outside {} parent at {},{} "
                                 "{}x{}",
@@ -312,7 +312,8 @@ static bool desktopHasLabel(lv_obj_t* object, const char* text)
 static bool desktopHasLabelContaining(lv_obj_t* object, const char* text)
 {
     if (lv_obj_check_type(object, &lv_label_class) &&
-        std::string(lv_label_get_text(object)).find(text) != std::string::npos) return true;
+        std::string(lv_label_get_text(object)).find(text) != std::string::npos)
+        return true;
     for (uint32_t i = 0; i < lv_obj_get_child_count(object); ++i) {
         if (desktopHasLabelContaining(lv_obj_get_child(object, i), text)) return true;
     }
@@ -350,15 +351,16 @@ static void desktopSaveUiCapture(const std::string& name)
     lv_timer_handler();
     lv_refr_now(display);
     // Read a complete LVGL render, not SDL's undefined back buffer after RenderPresent.
-    auto* surface = SDL_CreateRGBSurfaceWithFormat(0, GetHAL()->getDisplayWidth(), GetHAL()->getDisplayHeight(),
-                                                 32, SDL_PIXELFORMAT_ARGB8888);
+    auto* surface = SDL_CreateRGBSurfaceWithFormat(0, GetHAL()->getDisplayWidth(), GetHAL()->getDisplayHeight(), 32,
+                                                   SDL_PIXELFORMAT_ARGB8888);
     // Keep a full-screen capture outside LVGL's intentionally small embedded allocator.
     lv_draw_buf_t snapshot{};
-    const bool rendered = surface &&
-        lv_draw_buf_init(&snapshot, surface->w, surface->h, LV_COLOR_FORMAT_ARGB8888, surface->pitch,
-                         surface->pixels, surface->pitch * surface->h) == LV_RESULT_OK &&
+    const bool rendered =
+        surface &&
+        lv_draw_buf_init(&snapshot, surface->w, surface->h, LV_COLOR_FORMAT_ARGB8888, surface->pitch, surface->pixels,
+                         surface->pitch * surface->h) == LV_RESULT_OK &&
         lv_snapshot_take_to_draw_buf(lv_screen_active(), LV_COLOR_FORMAT_ARGB8888, &snapshot) == LV_RESULT_OK;
-    const auto path = (std::filesystem::path(directory) / (name + ".bmp")).string();
+    const auto path  = (std::filesystem::path(directory) / (name + ".bmp")).string();
     const bool saved = rendered && SDL_SaveBMP(surface, path.c_str()) == 0;
     SDL_FreeSurface(surface);
     if (!saved) {
@@ -382,14 +384,13 @@ static void desktopAssertTouchTextEditing(const char* context)
             std::abort();
         }
         auto* draft = lv_keyboard_get_textarea(keyboard);
-        auto* root = desktopTopFullscreenRoot();
+        auto* root  = desktopTopFullscreenRoot();
         lv_obj_update_layout(root);
         DesktopBoundsValidation editorBounds;
         editorBounds.context = context;
         desktopValidateBoundsRecursive(root, editorBounds);
         if (draft == nullptr || draft == field || std::string(lv_textarea_get_text(draft)) != "seed" ||
-            lv_textarea_get_password_mode(draft) != lv_textarea_get_password_mode(field) ||
-            !editorBounds.valid) {
+            lv_textarea_get_password_mode(draft) != lv_textarea_get_password_mode(field) || !editorBounds.valid) {
             mclog::tagError(_tag, "desktop touch editor draft/bounds failed in {}", context);
             std::abort();
         }
@@ -470,8 +471,7 @@ static void desktopWaitForWifiState(hal::HalBase::WifiConnectionState state, con
             auto* root = desktopTopFullscreenRoot();
             std::vector<lv_obj_t*> fields;
             desktopCollectTextFields(root, fields);
-            if (desktopHasLabel(root, label) && fields.size() == 2 &&
-                !lv_obj_has_state(fields[0], LV_STATE_DISABLED)) {
+            if (desktopHasLabel(root, label) && fields.size() == 2 && !lv_obj_has_state(fields[0], LV_STATE_DISABLED)) {
                 return;
             }
         }
@@ -527,8 +527,8 @@ static void desktopAssertNetworkSelection()
                     std::abort();
                 }
                 if (desktopEnvEnabled("M5TAB5_DESKTOP_WIFI_MANY_NETWORKS")) {
-                    auto* last = desktopFindButton(root, "01234567890123456789012345678901");
-                    auto* scan = desktopFindButton(root, "Scan");
+                    auto* last    = desktopFindButton(root, "01234567890123456789012345678901");
+                    auto* scan    = desktopFindButton(root, "Scan");
                     auto* connect = desktopFindButton(root, "Connect");
                     if (!last || !scan || !connect) std::abort();
                     lv_obj_update_layout(root);
@@ -546,7 +546,8 @@ static void desktopAssertNetworkSelection()
                     lv_textarea_set_text(fields[1], "old-password");
                     lv_obj_send_event(last, LV_EVENT_CLICKED, nullptr);
                     if (std::string(lv_textarea_get_text(fields[0])) != "01234567890123456789012345678901" ||
-                        lv_textarea_get_text(fields[1])[0] != '\0') std::abort();
+                        lv_textarea_get_text(fields[1])[0] != '\0')
+                        std::abort();
                     desktopSaveUiCapture("Network-populated-last");
                     lv_obj_scroll_to_view(workshop, LV_ANIM_OFF);
                 }
@@ -619,7 +620,10 @@ static void desktopAssertNetworkSelection()
 static void desktopAssertRtcWorkflow()
 {
     auto check = [](bool ok, const char* reason) {
-        if (!ok) { mclog::tagError(_tag, "desktop RTC workflow: {}", reason); std::abort(); }
+        if (!ok) {
+            mclog::tagError(_tag, "desktop RTC workflow: {}", reason);
+            std::abort();
+        }
     };
     auto waitFor = [](const char* text) {
         const auto started = GetHAL()->millis();
@@ -627,10 +631,10 @@ static void desktopAssertRtcWorkflow()
             desktopPumpLifecycle();
             {
                 LvglLockGuard lock;
-                auto* root = desktopTopFullscreenRoot();
+                auto* root   = desktopTopFullscreenRoot();
                 auto* button = desktopFindButton(root, "Set clock");
-                if (desktopHasLabelContaining(root, text) && button &&
-                    !lv_obj_has_state(button, LV_STATE_DISABLED)) return;
+                if (desktopHasLabelContaining(root, text) && button && !lv_obj_has_state(button, LV_STATE_DISABLED))
+                    return;
             }
             SDL_Delay(5);
         }
@@ -653,12 +657,14 @@ static void desktopAssertRtcWorkflow()
         lv_textarea_set_text(fields[0], "2026-02-30");
         lv_textarea_set_text(fields[1], "12:34:56");
         desktopClickNetworkAction("Set clock");
-        check(desktopHasLabelContaining(root, "Invalid date/time") && !desktopFindButton(root, "Confirm"), "invalid calendar reached confirmation");
+        check(desktopHasLabelContaining(root, "Invalid date/time") && !desktopFindButton(root, "Confirm"),
+              "invalid calendar reached confirmation");
         lv_textarea_set_text(fields[0], "2028-02-29");
         desktopClickNetworkAction("Set clock");
         // LVGL's fitted labels restore their full text after deferred layout.
         lv_obj_update_layout(root);
-        check(desktopHasLabel(root, initialize ? "Initialize RTC and set time?" : "Set clock?"), "valid calendar did not reach confirmation");
+        check(desktopHasLabel(root, initialize ? "Initialize RTC and set time?" : "Set clock?"),
+              "valid calendar did not reach confirmation");
         desktopSaveUiCapture("RTC-confirmation");
         desktopClickNetworkAction("Cancel");
         check(!desktopFindButton(root, "Confirm"), "Cancel left confirmation visible");
@@ -667,9 +673,9 @@ static void desktopAssertRtcWorkflow()
     }
     waitFor("Clock set and readback verified");
     const auto result = GetHAL()->getRtcData();
-    check(result.valid && !result.needsInitialization && result.time.tm_year == 128 &&
-        result.time.tm_mon == 1 && result.time.tm_mday == 29 && result.time.tm_hour == 12 &&
-        result.time.tm_min == 34, "verified result differs from requested calendar");
+    check(result.valid && !result.needsInitialization && result.time.tm_year == 128 && result.time.tm_mon == 1 &&
+              result.time.tm_mday == 29 && result.time.tm_hour == 12 && result.time.tm_min == 34,
+          "verified result differs from requested calendar");
     if (!desktopValidateNonScrollableBounds("RTC setting")) std::abort();
     desktopSaveUiCapture("RTC-set-verified");
 }
@@ -677,8 +683,11 @@ static void desktopAssertRtcWorkflow()
 static void desktopAssertUpdatesWorkflow(int appId)
 {
     using State = hal::HalBase::OtaState;
-    auto check = [](bool ok, const char* reason) {
-        if (!ok) { mclog::tagError(_tag, "desktop Updates workflow: {}", reason); std::abort(); }
+    auto check  = [](bool ok, const char* reason) {
+        if (!ok) {
+            mclog::tagError(_tag, "desktop Updates workflow: {}", reason);
+            std::abort();
+        }
     };
     auto waitFor = [&](State expected, const char* enabledButton) {
         const auto started = GetHAL()->millis();
@@ -686,8 +695,8 @@ static void desktopAssertUpdatesWorkflow(int appId)
             desktopPumpLifecycle();
             LvglLockGuard lock;
             auto* button = desktopFindButton(desktopTopFullscreenRoot(), enabledButton);
-            if (GetHAL()->otaGetStatus().state == expected && button &&
-                !lv_obj_has_state(button, LV_STATE_DISABLED)) return;
+            if (GetHAL()->otaGetStatus().state == expected && button && !lv_obj_has_state(button, LV_STATE_DISABLED))
+                return;
             SDL_Delay(5);
         }
         check(false, "state/control did not settle");
@@ -821,12 +830,12 @@ static void desktopAssertCameraWorkflow()
     {
         LvglLockGuard lock;
         baselineTimers = desktopTimerCount();
-        auto* stop = desktopFindButton(desktopTopFullscreenRoot(), "Stop");
+        auto* stop     = desktopFindButton(desktopTopFullscreenRoot(), "Stop");
         if (stop == nullptr || !lv_obj_has_state(stop, LV_STATE_DISABLED)) {
             std::abort();
         }
     }
-    const char* fault = std::getenv("M5TAB5_DESKTOP_CAMERA_FAIL");
+    const char* fault        = std::getenv("M5TAB5_DESKTOP_CAMERA_FAIL");
     const bool expectFailure = fault != nullptr && fault[0] != '\0';
     desktopClickCameraAction("Start");
     if (expectFailure) {
@@ -847,18 +856,18 @@ static void desktopAssertCameraWorkflow()
         desktopWaitForCameraState(State::Running, "Camera running");
         {
             LvglLockGuard lock;
-            auto* root = desktopTopFullscreenRoot();
-            auto* canvas = desktopFindCanvas(root);
-            auto* buffer = canvas == nullptr ? nullptr : lv_canvas_get_draw_buf(canvas);
+            auto* root        = desktopTopFullscreenRoot();
+            auto* canvas      = desktopFindCanvas(root);
+            auto* buffer      = canvas == nullptr ? nullptr : lv_canvas_get_draw_buf(canvas);
             const auto status = GetHAL()->cameraGetStatus();
-            auto* start = desktopFindButton(root, "Start");
+            auto* start       = desktopFindButton(root, "Start");
             if (buffer == nullptr || buffer->header.w != status.width || buffer->header.h != status.height ||
                 status.width != lv_obj_get_width(canvas) || status.height != lv_obj_get_height(canvas) ||
                 !lv_obj_has_state(start, LV_STATE_DISABLED) || desktopTimerCount() != baselineTimers + 1) {
                 std::abort();
             }
             auto* pixels = reinterpret_cast<uint16_t*>(buffer->data);
-            bool varied = false;
+            bool varied  = false;
             for (uint32_t x = 1; x < buffer->header.w; ++x) {
                 varied = varied || pixels[x] != pixels[0];
             }
@@ -912,10 +921,10 @@ static void desktopWaitForPpsLabel(const char* label)
             if (desktopHasLabel(root, label)) {
                 // Output-off readback can arrive before the rest of the telemetry or command completion.
                 const bool readyOff = std::string(label) != "Output Off confirmed" ||
-                    (!lv_obj_has_state(desktopFindButton(root, "Apply"), LV_STATE_DISABLED) &&
-                     desktopHasLabel(root, "0.000 A"));
-                const bool readyOn = std::string(label) != "Output On" ||
-                    desktopHasLabel(root, "Mode: CV") || desktopHasLabel(root, "Mode: CC");
+                                      (!lv_obj_has_state(desktopFindButton(root, "Apply"), LV_STATE_DISABLED) &&
+                                       desktopHasLabel(root, "0.000 A"));
+                const bool readyOn = std::string(label) != "Output On" || desktopHasLabel(root, "Mode: CV") ||
+                                     desktopHasLabel(root, "Mode: CC");
                 if (readyOff && readyOn) {
                     return;
                 }
@@ -955,8 +964,7 @@ static void desktopAssertPpsWorkflow()
         desktopWaitForPpsLabel("No PPS detected / check 9-36V input power");
         LvglLockGuard lock;
         auto* root = desktopTopFullscreenRoot();
-        if (!desktopHasLabel(root, "Output unknown - may be live") ||
-            !desktopHasLabel(root, "-- A") ||
+        if (!desktopHasLabel(root, "Output unknown - may be live") || !desktopHasLabel(root, "-- A") ||
             !lv_obj_has_state(desktopFindButton(root, "Apply"), LV_STATE_DISABLED) ||
             !lv_obj_has_state(desktopFindSwitch(root), LV_STATE_DISABLED) ||
             lv_obj_has_state(desktopFindButton(root, "Emergency Off"), LV_STATE_DISABLED)) {
@@ -983,25 +991,27 @@ static void desktopAssertPpsWorkflow()
         if (fields.size() != 2) desktopPpsFailure(__LINE__);
         lv_textarea_set_text(fields[0], "30.001");
         if (!lv_obj_has_state(desktopFindButton(root, "Apply"), LV_STATE_DISABLED) ||
-            !lv_obj_has_state(desktopFindSwitch(root), LV_STATE_DISABLED)) desktopPpsFailure(__LINE__);
+            !lv_obj_has_state(desktopFindSwitch(root), LV_STATE_DISABLED))
+            desktopPpsFailure(__LINE__);
         lv_obj_send_event(fields[0], LV_EVENT_CLICKED, nullptr);
         auto* keyboard = desktopFindKeyboard(root);
         if (!keyboard) desktopPpsFailure(__LINE__);
         lv_textarea_set_text(lv_keyboard_get_textarea(keyboard), "12.345");
         desktopPressKeyboardKey(keyboard, LV_SYMBOL_OK);
         lv_textarea_set_text(fields[1], "2.123");
-        if (!desktopHasLabel(root, "Set V: 12.345 V") || !desktopHasLabel(root, "Set A: 2.123 A")) desktopPpsFailure(__LINE__);
+        if (!desktopHasLabel(root, "Set V: 12.345 V") || !desktopHasLabel(root, "Set A: 2.123 A"))
+            desktopPpsFailure(__LINE__);
         desktopSaveUiCapture("PPS-exact-entry");
         lv_obj_send_event(desktopFindButton(root, "Apply"), LV_EVENT_CLICKED, nullptr);
     }
     const auto started = GetHAL()->millis();
-    bool applied = false;
+    bool applied       = false;
     while (GetHAL()->millis() - started < 3000 && !applied) {
         desktopPumpLifecycle();
         {
             LvglLockGuard lock;
             auto* root = desktopTopFullscreenRoot();
-            applied = !lv_obj_has_state(desktopFindSwitch(root), LV_STATE_DISABLED) &&
+            applied    = !lv_obj_has_state(desktopFindSwitch(root), LV_STATE_DISABLED) &&
                       desktopHasLabel(root, "Set V: 12.345 V");
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -1020,7 +1030,8 @@ static void desktopAssertPpsWorkflow()
         mclog::tagError(_tag, "desktop PPS setpoint readback mismatch");
         desktopPpsFailure(__LINE__);
     }
-    if (!GetHAL()->i2cReadRegister(hal::ModuleBus::MBus, 0x35, 0x1C, voltageBytes, sizeof(voltageBytes))) desktopPpsFailure(__LINE__);
+    if (!GetHAL()->i2cReadRegister(hal::ModuleBus::MBus, 0x35, 0x1C, voltageBytes, sizeof(voltageBytes)))
+        desktopPpsFailure(__LINE__);
     std::memcpy(&voltage, voltageBytes, sizeof(voltage));
     if (voltage != 2.123f) desktopPpsFailure(__LINE__);
     desktopSetPpsOutput(true);
@@ -1114,7 +1125,8 @@ static void desktopAssertPowerWorkflow(int appId)
         LvglLockGuard lock;
         auto* root = desktopTopFullscreenRoot();
         if (!desktopHasLabel(root, "Preparing") ||
-            !lv_obj_has_state(desktopFindButton(root, "Power Off"), LV_STATE_DISABLED)) std::abort();
+            !lv_obj_has_state(desktopFindButton(root, "Power Off"), LV_STATE_DISABLED))
+            std::abort();
     }
     if (desktopEnvEnabled("M5TAB5_DESKTOP_POWER_FAIL")) {
         desktopWaitPowerLabel("Simulated power action failure");
@@ -1131,7 +1143,8 @@ static void desktopAssertPowerWorkflow(int appId)
     if (!GetHAL()->isDisplayAsleep() || GetHAL()->getDisplayBrightness() != 0) std::abort();
     desktopPowerClick("Back");
     desktopPumpLifecycle();
-    if (GetMooncake().getAppCurrentState(appId) != AppAbility::StateSleeping || !GetHAL()->isDisplayAsleep()) std::abort();
+    if (GetMooncake().getAppCurrentState(appId) != AppAbility::StateSleeping || !GetHAL()->isDisplayAsleep())
+        std::abort();
     if (!app_registry::registry().open(app_registry::AppKey::SettingsPower)) std::abort();
     desktopPumpLifecycle();
     desktopWaitPowerLabel("Display off (simulated)");
@@ -1145,8 +1158,9 @@ static void desktopAssertPowerWorkflow(int appId)
             desktopSaveUiCapture("Power-confirmation");
         }
         desktopPowerClick("Confirm");
-        desktopWaitPowerLabel(std::strcmp(action, "Motion Sleep") == 0 ? "Motion sleep simulated" :
-                              std::strcmp(action, "Timed Sleep") == 0 ? "Timed sleep simulated: 5 minutes" : "Power off simulated");
+        desktopWaitPowerLabel(std::strcmp(action, "Motion Sleep") == 0  ? "Motion sleep simulated"
+                              : std::strcmp(action, "Timed Sleep") == 0 ? "Timed sleep simulated: 5 minutes"
+                                                                        : "Power off simulated");
     }
     if (!desktopValidateNonScrollableBounds("Power workflow")) std::abort();
     {
@@ -1177,17 +1191,17 @@ static lv_obj_t* desktopGpioCard(lv_obj_t* object, uint8_t pin)
 
 static void desktopSeedIndependentGpio()
 {
-    const char* fault = std::getenv("M5TAB5_DESKTOP_GPIO_FAIL");
+    const char* fault       = std::getenv("M5TAB5_DESKTOP_GPIO_FAIL");
     const std::string saved = fault ? fault : "";
     unsetenv("M5TAB5_DESKTOP_GPIO_FAIL");
-    desktopCheckGpio(GetHAL()->gpioInitOutput(50) == hal::GpioClaimResult::Claimed &&
-                     GetHAL()->gpioSetLevel(50, true), "cannot seed independent output");
+    desktopCheckGpio(GetHAL()->gpioInitOutput(50) == hal::GpioClaimResult::Claimed && GetHAL()->gpioSetLevel(50, true),
+                     "cannot seed independent output");
     if (!saved.empty()) setenv("M5TAB5_DESKTOP_GPIO_FAIL", saved.c_str(), 1);
 }
 
 static void desktopAssertGpioWorkflow(int appId)
 {
-    const char* faultEnv = std::getenv("M5TAB5_DESKTOP_GPIO_FAIL");
+    const char* faultEnv    = std::getenv("M5TAB5_DESKTOP_GPIO_FAIL");
     const std::string fault = faultEnv ? faultEnv : "";
     {
         LvglLockGuard lock;
@@ -1198,23 +1212,25 @@ static void desktopAssertGpioWorkflow(int appId)
                              "opening changed a pin");
         }
         for (uint8_t pin : {0, 1, 53, 54}) {
-            auto* card = desktopGpioCard(root, pin);
+            auto* card   = desktopGpioCard(root, pin);
             auto* action = desktopFindButton(card, "Reserved");
             auto* toggle = desktopFindSwitch(card);
             desktopCheckGpio(card && action && toggle && lv_obj_has_state(action, LV_STATE_DISABLED) &&
-                             lv_obj_has_flag(toggle, LV_OBJ_FLAG_HIDDEN), "protected controls are active");
+                                 lv_obj_has_flag(toggle, LV_OBJ_FLAG_HIDDEN),
+                             "protected controls are active");
             desktopCheckGpio(GetHAL()->gpioInitOutput(pin) == hal::GpioClaimResult::Rejected &&
-                             !GetHAL()->gpioSetLevel(pin, true) && !GetHAL()->gpioReset(pin),
+                                 !GetHAL()->gpioSetLevel(pin, true) && !GetHAL()->gpioReset(pin),
                              "HAL permits protected pin output");
         }
-        auto* card = desktopGpioCard(root, 49);
+        auto* card   = desktopGpioCard(root, 49);
         auto* toggle = desktopFindSwitch(card);
         desktopCheckGpio(desktopHasLabel(card, "Unclaimed") && lv_obj_has_state(toggle, LV_STATE_DISABLED),
                          "unclaimed pin must not have an active toggle");
         lv_obj_send_event(desktopFindButton(card, "Drive Low"), LV_EVENT_CLICKED, nullptr);
         if (fault == "init") {
             desktopCheckGpio(desktopHasLabel(card, "Unknown") && lv_obj_has_state(toggle, LV_STATE_DISABLED) &&
-                             GetHAL()->gpioGetOutputState(49).claimed, "partial initialization not retained");
+                                 GetHAL()->gpioGetOutputState(49).claimed,
+                             "partial initialization not retained");
             desktopSaveUiCapture("GPIO-init-error");
             unsetenv("M5TAB5_DESKTOP_GPIO_FAIL");
             lv_obj_send_event(desktopFindButton(card, "Release"), LV_EVENT_CLICKED, nullptr);
@@ -1240,7 +1256,7 @@ static void desktopAssertGpioWorkflow(int appId)
         if (fault == "release") {
             lv_obj_send_event(desktopFindButton(root, "Back"), LV_EVENT_CLICKED, nullptr);
             desktopCheckGpio(desktopHasLabel(card, "Unknown") &&
-                             desktopHasLabel(root, "GPIO release failed; a pin may still be driven"),
+                                 desktopHasLabel(root, "GPIO release failed; a pin may still be driven"),
                              "release failure hidden on Back");
             desktopSaveUiCapture("GPIO-release-error");
         }
@@ -1263,10 +1279,10 @@ static void desktopAssertGpioWorkflow(int appId)
         lv_obj_send_event(desktopFindButton(independent, "Drive Low"), LV_EVENT_CLICKED, nullptr);
         desktopCheckGpio(desktopHasLabel(independent, "Unclaimed") && GetHAL()->gpioGetOutputState(50).high,
                          "rejected claim altered independent output");
-        auto* last = desktopGpioCard(root, 51);
-        auto* grid = lv_obj_get_parent(last);
+        auto* last       = desktopGpioCard(root, 51);
+        auto* grid       = lv_obj_get_parent(last);
         auto* releaseAll = desktopFindButton(root, "Release All");
-        auto* back = desktopFindButton(root, "Back");
+        auto* back       = desktopFindButton(root, "Back");
         lv_area_t releaseBefore, backBefore;
         lv_obj_get_coords(releaseAll, &releaseBefore);
         lv_obj_get_coords(back, &backBefore);
@@ -1278,7 +1294,7 @@ static void desktopAssertGpioWorkflow(int appId)
         lv_obj_get_coords(releaseAll, &releaseAfter);
         lv_obj_get_coords(back, &backAfter);
         desktopCheckGpio(lv_obj_get_scroll_y(grid) > 0 && cardArea.y1 >= gridArea.y1 && cardArea.y2 <= gridArea.y2 &&
-                         releaseAfter.y1 == releaseBefore.y1 && backAfter.y1 == backBefore.y1,
+                             releaseAfter.y1 == releaseBefore.y1 && backAfter.y1 == backBefore.y1,
                          "scroll hides controls or moves fixed actions");
         lv_obj_send_event(desktopFindButton(last, "Drive Low"), LV_EVENT_CLICKED, nullptr);
         auto* toggle = desktopFindSwitch(last);
@@ -1288,7 +1304,8 @@ static void desktopAssertGpioWorkflow(int appId)
         desktopSaveUiCapture("GPIO-scrolled");
         lv_obj_send_event(releaseAll, LV_EVENT_CLICKED, nullptr);
         desktopCheckGpio(!GetHAL()->gpioGetOutputState(51).claimed && GetHAL()->gpioGetOutputState(50).high &&
-                         lv_obj_has_state(releaseAll, LV_STATE_DISABLED), "Release All changed unowned output");
+                             lv_obj_has_state(releaseAll, LV_STATE_DISABLED),
+                         "Release All changed unowned output");
         lv_obj_scroll_to_view(card, LV_ANIM_OFF);
         lv_obj_send_event(desktopFindButton(card, "Drive Low"), LV_EVENT_CLICKED, nullptr);
         toggle = desktopFindSwitch(card);
@@ -1301,7 +1318,8 @@ static lv_obj_t* desktopFindLabelContaining(lv_obj_t* object, const char* text)
 {
     if (lv_obj_has_flag(object, LV_OBJ_FLAG_HIDDEN)) return nullptr;
     if (lv_obj_check_type(object, &lv_label_class) &&
-        std::string(lv_label_get_text(object)).find(text) != std::string::npos) return object;
+        std::string(lv_label_get_text(object)).find(text) != std::string::npos)
+        return object;
     for (uint32_t i = 0; i < lv_obj_get_child_count(object); ++i)
         if (auto* label = desktopFindLabelContaining(lv_obj_get_child(object, i), text)) return label;
     return nullptr;
@@ -1309,10 +1327,10 @@ static lv_obj_t* desktopFindLabelContaining(lv_obj_t* object, const char* text)
 
 static void desktopAssertScrollableText(lv_obj_t* label, const char* action, const char* capture)
 {
-    auto* root = desktopTopFullscreenRoot();
+    auto* root     = desktopTopFullscreenRoot();
     auto* viewport = lv_obj_get_parent(label);
-    auto* button = desktopFindButton(root, action);
-    auto* back = desktopFindButton(root, "Back");
+    auto* button   = desktopFindButton(root, action);
+    auto* back     = desktopFindButton(root, "Back");
     lv_obj_update_layout(root);
     if (!lv_obj_has_flag(viewport, LV_OBJ_FLAG_SCROLLABLE)) std::abort();
     lv_obj_scroll_to_y(viewport, 0, LV_ANIM_OFF);
@@ -1349,13 +1367,13 @@ static void desktopAssertPopulatedTools(app_registry::AppKey key, int appId)
         }
     }
     const char* marker = sd ? "Showing first 256 entries" : "SERIAL-END-MARKER";
-    bool found = false;
+    bool found         = false;
     const auto started = GetHAL()->millis();
     while (GetHAL()->millis() - started < 4000) {
         desktopPumpLifecycle();
         {
             LvglLockGuard lock;
-            auto* root = desktopTopFullscreenRoot();
+            auto* root  = desktopTopFullscreenRoot();
             auto* label = desktopFindLabelContaining(root, marker);
             if (label) {
                 if (!sd && std::strlen(lv_label_get_text(label)) > 2000) std::abort();
@@ -1367,15 +1385,22 @@ static void desktopAssertPopulatedTools(app_registry::AppKey key, int appId)
         }
         SDL_Delay(5);
     }
-    if (!found) { mclog::tagError(_tag, "populated tool did not reach {}", marker); std::abort(); }
+    if (!found) {
+        mclog::tagError(_tag, "populated tool did not reach {}", marker);
+        std::abort();
+    }
     if (!sd) {
-        { LvglLockGuard lock; lv_obj_send_event(desktopFindButton(desktopTopFullscreenRoot(), "Back"), LV_EVENT_CLICKED, nullptr); }
+        {
+            LvglLockGuard lock;
+            lv_obj_send_event(desktopFindButton(desktopTopFullscreenRoot(), "Back"), LV_EVENT_CLICKED, nullptr);
+        }
         desktopPumpLifecycle();
         if (!app_registry::registry().open(key)) std::abort();
         desktopPumpLifecycle();
         LvglLockGuard lock;
         if (GetMooncake().getAppCurrentState(appId) != AppAbility::StateRunning ||
-            !desktopHasLabelContaining(desktopTopFullscreenRoot(), marker)) std::abort();
+            !desktopHasLabelContaining(desktopTopFullscreenRoot(), marker))
+            std::abort();
         desktopSaveUiCapture("COM-reopened");
     }
 }
@@ -1460,13 +1485,13 @@ static void desktopAssertAllRegisteredAppsUi()
 
         {
             LvglLockGuard lock;
-            auto* root = desktopTopFullscreenRoot();
+            auto* root   = desktopTopFullscreenRoot();
             auto* header = lv_obj_get_child(root, 0);
-            auto* back = lv_obj_get_child(header, 0);
+            auto* back   = lv_obj_get_child(header, 0);
             lv_area_t headerArea;
             lv_obj_get_coords(header, &headerArea);
-            if (headerArea.y2 >= app_ui::safeContentRect().y ||
-                lv_obj_has_flag(header, LV_OBJ_FLAG_HIDDEN) || !lv_obj_check_type(back, &lv_button_class)) {
+            if (headerArea.y2 >= app_ui::safeContentRect().y || lv_obj_has_flag(header, LV_OBJ_FLAG_HIDDEN) ||
+                !lv_obj_check_type(back, &lv_button_class)) {
                 mclog::tagError(_tag, "desktop Back control is hidden in {}", registeredApp.label);
                 std::abort();
             }
@@ -1490,7 +1515,7 @@ static void desktopAssertAllRegisteredAppsUi()
         }
         if (registeredApp.key == app_registry::AppKey::Pps && !desktopEnvEnabled("M5TAB5_DESKTOP_PPS_ABSENT")) {
             const auto started = GetHAL()->millis();
-            uint8_t enabled = 1;
+            uint8_t enabled    = 1;
             while (GetHAL()->millis() - started < 2000) {
                 if (GetHAL()->i2cReadRegister(hal::ModuleBus::MBus, 0x35, 0x04, &enabled, 1) && enabled == 0) {
                     break;
@@ -1524,7 +1549,7 @@ static void desktopAssertAllRegisteredAppsUi()
             }
             desktopPumpLifecycle();
             const auto warningStart = GetHAL()->millis();
-            bool warningVisible = false;
+            bool warningVisible     = false;
             while (GetHAL()->millis() - warningStart < 2000) {
                 desktopPumpLifecycle();
                 {
@@ -1590,7 +1615,8 @@ static void desktopAssertAllRegisteredAppsUi()
             {
                 LvglLockGuard lock;
                 if (GetHAL()->cameraGetStatus().state != hal::HalBase::CameraState::Stopped ||
-                    desktopTimerCount() != timersBeforeOpen || closedBeforeFrame.objectCount != beforeOpen.objectCount ||
+                    desktopTimerCount() != timersBeforeOpen ||
+                    closedBeforeFrame.objectCount != beforeOpen.objectCount ||
                     closedBeforeFrame.fullScreenChildCount != beforeOpen.fullScreenChildCount) {
                     mclog::tagError(_tag, "desktop camera cleanup failed before first frame");
                     std::abort();
@@ -1602,17 +1628,17 @@ static void desktopAssertAllRegisteredAppsUi()
     _desktopAllAppsUiAsserted = true;
     mclog::tagInfo(_tag, "desktop registered app UI smoke assertion passed");
 }
-} // namespace
+}  // namespace
 
 void desktop_smoke::configure(void (*pumpLifecycle)())
 {
-    _pumpLifecycle = pumpLifecycle;
-    _desktopUpdateCount = 0;
-    _desktopMaxUpdates = desktopMaxUpdatesFromEnv();
-    _desktopAssertLauncherUi = desktopEnvEnabled("M5TAB5_DESKTOP_ASSERT_LAUNCHER_UI");
+    _pumpLifecycle             = pumpLifecycle;
+    _desktopUpdateCount        = 0;
+    _desktopMaxUpdates         = desktopMaxUpdatesFromEnv();
+    _desktopAssertLauncherUi   = desktopEnvEnabled("M5TAB5_DESKTOP_ASSERT_LAUNCHER_UI");
     _desktopLauncherUiAsserted = false;
-    _desktopAssertAllAppsUi = desktopEnvEnabled("M5TAB5_DESKTOP_ASSERT_ALL_APPS_UI");
-    _desktopAllAppsUiAsserted = false;
+    _desktopAssertAllAppsUi    = desktopEnvEnabled("M5TAB5_DESKTOP_ASSERT_ALL_APPS_UI");
+    _desktopAllAppsUiAsserted  = false;
 }
 
 void desktop_smoke::afterUpdate()

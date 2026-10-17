@@ -5,4 +5,4 @@ namespace desktop_smoke {
 void configure(void (*pumpLifecycle)());
 void afterUpdate();
 bool isDone();
-}
+}  // namespace desktop_smoke

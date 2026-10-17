@@ -14,10 +14,10 @@ struct RtcSample : hal::HalBase::RtcData {
 class RtcController {
 public:
     using UpdateFn = std::function<void()>;
-    using DataFn = std::function<hal::HalBase::RtcData()>;
-    using SetFn = std::function<bool(const tm&, bool)>;
+    using DataFn   = std::function<hal::HalBase::RtcData()>;
+    using SetFn    = std::function<bool(const tm&, bool)>;
     RtcController(UpdateFn update, DataFn data, SetFn set);
-    RtcSample sample() const; // Dispatch a read; never wait on I/O.
+    RtcSample sample() const;  // Dispatch a read; never wait on I/O.
     RtcSample cached() const;
     bool setClock(const tm& time, bool initialize);
     static bool parseEditor(const std::string& date, const std::string& time, tm& result);
@@ -25,11 +25,15 @@ public:
     static std::string formatTime(const RtcSample& sample);
     static std::string formatDate(const RtcSample& sample);
     static std::string formatWeekday(const RtcSample& sample);
+
 private:
-    struct State { std::mutex mutex; RtcSample sample; };
+    struct State {
+        std::mutex mutex;
+        RtcSample sample;
+    };
     UpdateFn _update;
     DataFn _data;
     SetFn _set;
     std::shared_ptr<State> _state = std::make_shared<State>();
 };
-} // namespace app_hardware_rtc
+}  // namespace app_hardware_rtc

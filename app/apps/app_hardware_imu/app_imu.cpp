@@ -22,9 +22,7 @@ namespace {
 
 class AppImu : public mooncake::AppAbility {
 public:
-    AppImu()
-        : _controller([] { GetHAL()->updateImuData(); },
-                      [] { return GetHAL()->getImuData(); })
+    AppImu() : _controller([] { GetHAL()->updateImuData(); }, [] { return GetHAL()->getImuData(); })
     {
         setAppInfo().name = "IMU";
     }
@@ -55,13 +53,13 @@ public:
 private:
     ImuController _controller;
     std::unique_ptr<app_ui::AppShell> _shell;
-    lv_obj_t* _accelX = nullptr;
-    lv_obj_t* _accelY = nullptr;
-    lv_obj_t* _accelZ = nullptr;
-    lv_obj_t* _gyroX = nullptr;
-    lv_obj_t* _gyroY = nullptr;
-    lv_obj_t* _gyroZ = nullptr;
-    lv_obj_t* _detail = nullptr;
+    lv_obj_t* _accelX      = nullptr;
+    lv_obj_t* _accelY      = nullptr;
+    lv_obj_t* _accelZ      = nullptr;
+    lv_obj_t* _gyroX       = nullptr;
+    lv_obj_t* _gyroY       = nullptr;
+    lv_obj_t* _gyroZ       = nullptr;
+    lv_obj_t* _detail      = nullptr;
     uint32_t _lastUpdateMs = 0;
 
     lv_obj_t* content() const
@@ -73,20 +71,20 @@ private:
     {
         LvglLockGuard lock;
         const auto layout = makeImuLayout();
-        auto* description = app_ui::makeLabel(content(), "Live accelerometer and gyro readout.", layout.description.x,
-                                              layout.description.y, &lv_font_montserrat_20,
-                                              app_ui::theme::color(app_ui::theme::muted));
+        auto* description =
+            app_ui::makeLabel(content(), "Live accelerometer and gyro readout.", layout.description.x,
+                              layout.description.y, &lv_font_montserrat_20, app_ui::theme::color(app_ui::theme::muted));
         lv_obj_set_width(description, layout.description.w);
         lv_label_set_long_mode(description, LV_LABEL_LONG_DOT);
         _accelX = makeMetric(layout, 0, "Accel X");
         _accelY = makeMetric(layout, 1, "Accel Y");
         _accelZ = makeMetric(layout, 2, "Accel Z");
-        _gyroX = makeMetric(layout, 3, "Gyro X");
-        _gyroY = makeMetric(layout, 4, "Gyro Y");
-        _gyroZ = makeMetric(layout, 5, "Gyro Z");
-        _detail = app_ui::makeLabel(content(), "Sampling: 4 Hz while this app is open", layout.detailText.x,
-                                    layout.detailText.y, &lv_font_montserrat_18,
-                                    app_ui::theme::color(app_ui::theme::muted));
+        _gyroX  = makeMetric(layout, 3, "Gyro X");
+        _gyroY  = makeMetric(layout, 4, "Gyro Y");
+        _gyroZ  = makeMetric(layout, 5, "Gyro Z");
+        _detail =
+            app_ui::makeLabel(content(), "Sampling: 4 Hz while this app is open", layout.detailText.x,
+                              layout.detailText.y, &lv_font_montserrat_18, app_ui::theme::color(app_ui::theme::muted));
         lv_obj_set_width(_detail, layout.detailText.w);
         lv_label_set_long_mode(_detail, LV_LABEL_LONG_DOT);
         refresh();

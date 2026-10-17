@@ -15,15 +15,15 @@ namespace app_hardware_gpio {
 
 struct GpioPinState {
     hal::GpioPinInfo info;
-    bool claimed = false;
+    bool claimed    = false;
     bool levelKnown = false;
-    bool high = false;
+    bool high       = false;
 };
 
 class GpioController {
 public:
-    using InitFn = std::function<hal::GpioClaimResult(uint8_t pin)>;
-    using SetFn = std::function<bool(uint8_t pin, bool level)>;
+    using InitFn  = std::function<hal::GpioClaimResult(uint8_t pin)>;
+    using SetFn   = std::function<bool(uint8_t pin, bool level)>;
     using ResetFn = std::function<bool(uint8_t pin)>;
 
     GpioController(std::vector<hal::GpioPinInfo> pins, InitFn initFn, SetFn setFn, ResetFn resetFn);

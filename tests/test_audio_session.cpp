@@ -6,22 +6,29 @@
 #include <apps/runtime/async_job_runner.h>
 
 using Operation = hal::HalBase::AudioOperation;
-using Phase = hal::HalBase::AudioPhase;
+using Phase     = hal::HalBase::AudioPhase;
 
 int main()
 {
     // Match the BSP: volume zero mutes but preserves the preceding audible gain.
     hal::AudioVolume output;
-    int gain = 60;
-    bool muted = false;
+    int gain        = 60;
+    bool muted      = false;
     int volumeCalls = 0;
-    auto setVolume = [&](uint8_t value) {
+    auto setVolume  = [&](uint8_t value) {
         ++volumeCalls;
-        if (value == 0) muted = true;
-        else { gain = value; muted = false; }
+        if (value == 0)
+            muted = true;
+        else {
+            gain  = value;
+            muted = false;
+        }
         return true;
     };
-    auto setMute = [&](bool value) { muted = value; return true; };
+    auto setMute = [&](bool value) {
+        muted = value;
+        return true;
+    };
     assert(output.apply(60, setVolume, setMute));
     assert(!muted && gain == 60);
     assert(output.apply(0, setVolume, setMute));
@@ -35,8 +42,9 @@ int main()
     assert(muted);
     assert(output.apply(25, setVolume, setMute));
     assert(!muted && gain == 25);
-    output.invalidate(); // Clock changes can restore the codec's stored mute.
-    assert(!output.apply(0, [](uint8_t) { return false; }, setMute));
+    output.invalidate();  // Clock changes can restore the codec's stored mute.
+    assert(!output.apply(
+        0, [](uint8_t) { return false; }, setMute));
     assert(output.apply(0, setVolume, setMute));
     assert(muted);
 
@@ -57,12 +65,12 @@ int main()
     session.finish(token);
     assert(!session.snapshot().busy);
     assert(session.stopAndWait(0));
-    assert(!session.reserve(Operation::Tone, Phase::Playing)); // Shutdown admission remains closed.
+    assert(!session.reserve(Operation::Tone, Phase::Playing));  // Shutdown admission remains closed.
     session.resume();
 
     const auto next = session.reserve(Operation::HeadphoneMic, Phase::Recording);
     assert(next && next != token);
-    session.finish(token); // A stale worker must never release a new session.
+    session.finish(token);  // A stale worker must never release a new session.
     assert(session.snapshot().busy);
     session.startFailed(next);
     status = session.snapshot();
@@ -73,19 +81,18 @@ int main()
     size_t calls = 0;
     assert(hal::transferAudio(session, token, buffer.data(), buffer.size() * sizeof(int16_t),
                               [&](void*, size_t bytes, size_t& done) {
-        assert(bytes <= 4096);
-        ++calls;
-        done = bytes / 2; // Valid partial progress must be retried.
-        if (done % 2) ++done;
-        return true;
-    }));
+                                  assert(bytes <= 4096);
+                                  ++calls;
+                                  done = bytes / 2;  // Valid partial progress must be retried.
+                                  if (done % 2) ++done;
+                                  return true;
+                              }));
     assert(calls > 5);
     session.finish(token);
 
     for (int fault = 0; fault < 4; ++fault) {
         token = session.reserve(Operation::Record, Phase::Recording);
-        assert(!hal::transferAudio(session, token, buffer.data(), 4096,
-                                   [&](void*, size_t bytes, size_t& done) {
+        assert(!hal::transferAudio(session, token, buffer.data(), 4096, [&](void*, size_t bytes, size_t& done) {
             done = fault == 1 ? bytes + 2 : fault == 2 ? 1 : 0;
             return fault != 3;
         }));
@@ -97,11 +104,11 @@ int main()
     calls = 0;
     assert(!hal::transferAudio(session, token, buffer.data(), buffer.size() * sizeof(int16_t),
                                [&](void*, size_t bytes, size_t& done) {
-        ++calls;
-        session.cancel();
-        done = bytes;
-        return true;
-    }));
+                                   ++calls;
+                                   session.cancel();
+                                   done = bytes;
+                                   return true;
+                               }));
     assert(calls == 1 && session.snapshot().lastError.empty());
     session.finish(token);
 
@@ -115,7 +122,7 @@ int main()
     assert(app_runtime::AsyncJobRunner::resumeAll());
 
     token = session.reserve(Operation::Music, Phase::Playing);
-    std::atomic<bool> entered {false};
+    std::atomic<bool> entered{false};
     assert(runner.start("audio cancellation", [&] {
         entered.store(true);
         while (!session.cancelled(token)) std::this_thread::yield();

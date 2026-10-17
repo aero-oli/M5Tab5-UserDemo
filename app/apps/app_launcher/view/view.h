@@ -23,33 +23,33 @@ public:
 
 private:
     struct CategoryAction {
-        LauncherView* view = nullptr;
+        LauncherView* view                 = nullptr;
         app_registry::AppCategory category = app_registry::AppCategory::Home;
-        lv_obj_t* button = nullptr;
+        lv_obj_t* button                   = nullptr;
     };
 
     struct TileAction {
-        LauncherView* view = nullptr;
+        LauncherView* view       = nullptr;
         app_registry::AppKey key = app_registry::AppKey::Rtc;
-        lv_obj_t* status = nullptr;
+        lv_obj_t* status         = nullptr;
         std::string lastStatus;
     };
 
-    lv_obj_t* _root = nullptr;
-    lv_obj_t* _topBar = nullptr;
-    lv_obj_t* _categoryRail = nullptr;
-    lv_obj_t* _tileArea = nullptr;
-    lv_obj_t* _timeLabel = nullptr;
-    lv_obj_t* _statusLabel = nullptr;
-    lv_obj_t* _emptyLabel = nullptr;
+    lv_obj_t* _root                             = nullptr;
+    lv_obj_t* _topBar                           = nullptr;
+    lv_obj_t* _categoryRail                     = nullptr;
+    lv_obj_t* _tileArea                         = nullptr;
+    lv_obj_t* _timeLabel                        = nullptr;
+    lv_obj_t* _statusLabel                      = nullptr;
+    lv_obj_t* _emptyLabel                       = nullptr;
     app_registry::AppCategory _selectedCategory = app_registry::AppCategory::Home;
     std::vector<std::unique_ptr<CategoryAction>> _categoryActions;
     std::vector<std::unique_ptr<TileAction>> _tileActions;
     std::string _lastStatusText;
     std::string _lastTimeText;
     uint32_t _lastStatusRefreshMs = 0;
-    uint32_t _lastHardwarePollMs = 0;
-    bool _hardwarePolled = false;
+    uint32_t _lastHardwarePollMs  = 0;
+    bool _hardwarePolled          = false;
     app_runtime::AsyncJobRunner _statusSampler;
 
     void createLayout();

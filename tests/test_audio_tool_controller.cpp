@@ -8,10 +8,10 @@ int main()
     using app_media_audio::AudioToolKind;
 
     int dualStarts = 0;
-    int dualStops = 0;
+    int dualStops  = 0;
     app_media_audio::AudioToolCallbacks dualCallbacks;
-    dualCallbacks.start = [&]() { ++dualStarts; };
-    dualCallbacks.stop = [&]() { ++dualStops; };
+    dualCallbacks.start    = [&]() { ++dualStarts; };
+    dualCallbacks.stop     = [&]() { ++dualStops; };
     dualCallbacks.micState = [] { return hal::HalBase::MIC_TEST_RECORDING; };
     AudioToolController dual(AudioToolKind::DualMic, dualCallbacks);
     dual.start();
@@ -25,8 +25,8 @@ int main()
 
     int headphoneStarts = 0;
     app_media_audio::AudioToolCallbacks headphoneCallbacks;
-    headphoneCallbacks.start = [&]() { ++headphoneStarts; };
-    headphoneCallbacks.micState = [] { return hal::HalBase::MIC_TEST_PLAYING; };
+    headphoneCallbacks.start             = [&]() { ++headphoneStarts; };
+    headphoneCallbacks.micState          = [] { return hal::HalBase::MIC_TEST_PLAYING; };
     headphoneCallbacks.headphoneDetected = [] { return false; };
     AudioToolController headphone(AudioToolKind::Headphone, headphoneCallbacks);
     headphone.start();
@@ -36,10 +36,10 @@ int main()
     assert(sample.detail == "No headset detected. The test can still be started.");
 
     int musicStarts = 0;
-    int musicStops = 0;
+    int musicStops  = 0;
     app_media_audio::AudioToolCallbacks musicCallbacks;
-    musicCallbacks.start = [&]() { ++musicStarts; };
-    musicCallbacks.stop = [&]() { ++musicStops; };
+    musicCallbacks.start      = [&]() { ++musicStarts; };
+    musicCallbacks.stop       = [&]() { ++musicStops; };
     musicCallbacks.musicState = [] { return hal::HalBase::MUSIC_PLAY_PLAYING; };
     AudioToolController music(AudioToolKind::Music, musicCallbacks);
     music.start();
@@ -55,23 +55,23 @@ int main()
     app_media_audio::AudioToolCallbacks statusCallbacks;
     statusCallbacks.status = [&] { return status; };
     AudioToolController reporting(AudioToolKind::DualMic, statusCallbacks);
-    status.busy = true;
+    status.busy  = true;
     status.phase = hal::HalBase::AudioPhase::Cancelling;
-    sample = reporting.sample();
+    sample       = reporting.sample();
     assert(sample.busy && sample.state == "Stopping");
-    status.phase = hal::HalBase::AudioPhase::Failed;
+    status.phase     = hal::HalBase::AudioPhase::Failed;
     status.lastError = "Microphone unavailable";
-    sample = reporting.sample();
+    sample           = reporting.sample();
     assert(sample.state == "Failed" && sample.detail == status.lastError);
 
     hal::HalBase::InterfaceData interfaces;
     app_media_audio::AudioToolCallbacks interfaceCallbacks;
-    interfaceCallbacks.status = [] { return hal::HalBase::AudioStatus {}; };
+    interfaceCallbacks.status          = [] { return hal::HalBase::AudioStatus{}; };
     interfaceCallbacks.interfaceStatus = [&] { return interfaces; };
     AudioToolController headset(AudioToolKind::Headphone, interfaceCallbacks);
     assert(headset.sample().detail == "Headphone status unavailable.");
-    interfaces.valid = true;
-    interfaces.hasSample = true;
+    interfaces.valid          = true;
+    interfaces.hasSample      = true;
     interfaces.headphoneKnown = true;
     assert(headset.sample().detail == "No headset detected. The test can still be started.");
     interfaces.headphone = true;

@@ -27,10 +27,10 @@ inline app_ui::Rect aboutContentRect()
 inline AboutLayout makeAboutLayout()
 {
     AboutLayout layout;
-    layout.content = aboutContentRect();
-    layout.deviceCard = {0, 0, 360, 132};
-    layout.displayCard = {layout.deviceCard.x + layout.deviceCard.w + layout.cardGap, 0, 360, 132};
-    layout.infoPanel = {0, 156, 920, 220};
+    layout.content      = aboutContentRect();
+    layout.deviceCard   = {0, 0, 360, 132};
+    layout.displayCard  = {layout.deviceCard.x + layout.deviceCard.w + layout.cardGap, 0, 360, 132};
+    layout.infoPanel    = {0, 156, 920, 220};
     layout.registryText = {0, 0, layout.infoPanel.w - 32, 56};
     layout.categoryText = {0, 72, layout.infoPanel.w - 32, 56};
     return layout;

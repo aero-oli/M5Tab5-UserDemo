@@ -8,7 +8,7 @@ int main()
     hal::WifiCredentialBytes bytes;
     const std::string fullSsid(32, 's');
     assert(hal::encodeWifiCredentials(fullSsid, "password", bytes));
-    for (auto value : bytes.ssid) assert(value == 's'); // All 32 bytes survive, without forced NUL.
+    for (auto value : bytes.ssid) assert(value == 's');  // All 32 bytes survive, without forced NUL.
     assert(hal::encodeWifiCredentials("Open", "", bytes));
     for (auto value : bytes.password) assert(value == 0);
     assert(hal::encodeWifiCredentials("PSK", std::string(64, 'a'), bytes));
@@ -50,7 +50,7 @@ int main()
     assert(!state.allowsCommands());
     assert(state.enterOtaCommit());
     state.cancelOta();
-    assert(!state.otaCancelled()); // Commit is atomic and no longer cancellable.
+    assert(!state.otaCancelled());  // Commit is atomic and no longer cancellable.
     state.quiesce();
     assert(!state.allowsCommands() && state.snapshot().otaActive);
     return 0;

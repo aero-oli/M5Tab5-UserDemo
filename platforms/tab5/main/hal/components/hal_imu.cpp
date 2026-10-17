@@ -66,6 +66,6 @@ void HalEsp32::updateImuData()
     data.gyroY  = bmi_sensor_data.gyr.x / 32.768 / 10.0f;
     data.gyroZ  = -bmi_sensor_data.gyr.z / 32.768 / 10.0f;
     data.valid = data.hasSample = true;
-    data.sampledAtMs = millis();
+    data.sampledAtMs            = millis();
     publishImuData(data);
 }

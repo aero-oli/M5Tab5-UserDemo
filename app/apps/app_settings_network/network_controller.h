@@ -19,8 +19,8 @@ struct NetworkSnapshot {
     hal::HalBase::WifiStatus status;
     std::vector<hal::HalBase::WifiNetwork> networks;
     std::string detail = "Ready";
-    bool busy = false;
-    bool updateActive = false;
+    bool busy          = false;
+    bool updateActive  = false;
 };
 
 struct NetworkCallbacks {
@@ -52,7 +52,7 @@ public:
 private:
     struct JobState {
         std::mutex mutex;
-        bool complete = false;
+        bool complete    = false;
         bool hasNetworks = false;
         std::vector<hal::HalBase::WifiNetwork> networks;
         std::string detail;

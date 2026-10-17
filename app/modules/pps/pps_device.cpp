@@ -12,7 +12,9 @@
 
 using namespace pps;
 
-PpsDevice::PpsDevice(modules::I2cDevice& device) : _device(device) {}
+PpsDevice::PpsDevice(modules::I2cDevice& device) : _device(device)
+{
+}
 
 bool PpsDevice::probe()
 {
@@ -21,7 +23,7 @@ bool PpsDevice::probe()
 
 bool PpsDevice::readIdentity(PpsIdentity& identity, const std::function<bool()>& interrupted)
 {
-    uint8_t id_bytes[2] = {};
+    uint8_t id_bytes[2]   = {};
     uint8_t uid_bytes[12] = {};
 
     if ((interrupted && interrupted()) || !_device.probe()) {
@@ -34,7 +36,7 @@ bool PpsDevice::readIdentity(PpsIdentity& identity, const std::function<bool()>&
         return false;
     }
 
-    identity.moduleId = static_cast<uint16_t>(id_bytes[0]) | (static_cast<uint16_t>(id_bytes[1]) << 8);
+    identity.moduleId   = static_cast<uint16_t>(id_bytes[0]) | (static_cast<uint16_t>(id_bytes[1]) << 8);
     identity.i2cAddress = _device.address();
 
     uint32_t uid0 = static_cast<uint32_t>(uid_bytes[0]) | (static_cast<uint32_t>(uid_bytes[1]) << 8) |
@@ -63,8 +65,8 @@ bool PpsDevice::readTelemetry(PpsTelemetry& telemetry, const std::function<bool(
     telemetry.connected = true;
 
     uint8_t enabled = 0;
-    uint8_t mode = 0;
-    auto proceed = [&] { return !interrupted || !interrupted(); };
+    uint8_t mode    = 0;
+    auto proceed    = [&] { return !interrupted || !interrupted(); };
     if (!proceed() || !readByte(REG_MODULE_ENABLE, enabled) || !proceed() || !readByte(REG_RUNNING_MODE, mode) ||
         !proceed() || !readByte(REG_DATA_FLAG, telemetry.dataFlag) || !proceed() ||
         !readFloat(REG_VOUT_READBACK, telemetry.voutReadback) || !proceed() ||
@@ -86,8 +88,8 @@ bool PpsDevice::readTelemetry(PpsTelemetry& telemetry, const std::function<bool(
         return false;
     }
     telemetry.outputEnabled = enabled != 0;
-    telemetry.mode = parseMode(mode);
-    telemetry.outputPower = telemetry.voutReadback * telemetry.ioutReadback;
+    telemetry.mode          = parseMode(mode);
+    telemetry.outputPower   = telemetry.voutReadback * telemetry.ioutReadback;
     return true;
 }
 
@@ -175,8 +177,8 @@ bool PpsDevice::writeFloat(uint8_t reg, float value)
 {
     uint32_t bits = 0;
     memcpy(&bits, &value, sizeof(value));
-    uint8_t bytes[4] = {static_cast<uint8_t>(bits), static_cast<uint8_t>(bits >> 8),
-                        static_cast<uint8_t>(bits >> 16), static_cast<uint8_t>(bits >> 24)};
+    uint8_t bytes[4] = {static_cast<uint8_t>(bits), static_cast<uint8_t>(bits >> 8), static_cast<uint8_t>(bits >> 16),
+                        static_cast<uint8_t>(bits >> 24)};
     return _device.writeRegister(reg, bytes, sizeof(bytes));
 }
 

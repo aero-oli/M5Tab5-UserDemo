@@ -24,7 +24,7 @@ namespace {
 
 struct ToggleBinding {
     class AppSwitches* app = nullptr;
-    SwitchId id = SwitchId::Charge;
+    SwitchId id            = SwitchId::Charge;
 };
 
 class AppSwitches : public mooncake::AppAbility {
@@ -33,10 +33,10 @@ public:
         : _controller(
               [] {
                   SwitchSnapshot snapshot;
-                  snapshot.charge = GetHAL()->getChargeEnable();
-                  snapshot.chargeQc = GetHAL()->getChargeQcEnable();
-                  snapshot.ext5v = GetHAL()->getExt5vEnable();
-                  snapshot.usbA5v = GetHAL()->getUsb5vEnable();
+                  snapshot.charge     = GetHAL()->getChargeEnable();
+                  snapshot.chargeQc   = GetHAL()->getChargeQcEnable();
+                  snapshot.ext5v      = GetHAL()->getExt5vEnable();
+                  snapshot.usbA5v     = GetHAL()->getUsb5vEnable();
                   snapshot.extAntenna = GetHAL()->getExtAntennaEnable();
                   return snapshot;
               },
@@ -59,9 +59,7 @@ public:
                           break;
                   }
               },
-              [] {
-                  return GetHAL()->getInterfaceData();
-              })
+              [] { return GetHAL()->getInterfaceData(); })
     {
         setAppInfo().name = "Switches";
     }
@@ -94,7 +92,7 @@ private:
     SwitchesController _controller;
     std::unique_ptr<app_ui::AppShell> _shell;
     std::vector<std::unique_ptr<ToggleBinding>> _bindings;
-    lv_obj_t* _status = nullptr;
+    lv_obj_t* _status      = nullptr;
     uint32_t _lastUpdateMs = 0;
 
     lv_obj_t* content() const
@@ -107,9 +105,9 @@ private:
         LvglLockGuard lock;
         const auto layout = makeSwitchesLayout();
 
-        auto* description = app_ui::makeLabel(content(), "Control power rails and interface routing from one safe panel.",
-                                              layout.description.x, layout.description.y, &lv_font_montserrat_20,
-                                              app_ui::theme::color(app_ui::theme::muted));
+        auto* description = app_ui::makeLabel(
+            content(), "Control power rails and interface routing from one safe panel.", layout.description.x,
+            layout.description.y, &lv_font_montserrat_20, app_ui::theme::color(app_ui::theme::muted));
         lv_obj_set_width(description, layout.description.w);
         lv_label_set_long_mode(description, LV_LABEL_LONG_DOT);
 
@@ -137,8 +135,8 @@ private:
     void addToggle(const SwitchesLayout& layout, int index, const char* title, const char* detail, SwitchId id,
                    bool initial)
     {
-        const auto card = switchCardRect(layout, index);
-        auto* panel = app_ui::makePanel(content(), card.x, card.y, card.w, card.h);
+        const auto card  = switchCardRect(layout, index);
+        auto* panel      = app_ui::makePanel(content(), card.x, card.y, card.w, card.h);
         auto* titleLabel = app_ui::makeLabel(panel, title, layout.cardTitle.x, layout.cardTitle.y,
                                              &lv_font_montserrat_18, app_ui::theme::color(app_ui::theme::text));
         lv_obj_set_width(titleLabel, layout.cardTitle.w);
@@ -147,11 +145,12 @@ private:
                                               &lv_font_montserrat_14, app_ui::theme::color(app_ui::theme::muted));
         lv_obj_set_width(detailLabel, layout.cardDetail.w);
         lv_label_set_long_mode(detailLabel, LV_LABEL_LONG_DOT);
-        auto* sw = app_ui::makeSwitch(panel, layout.switchControl.x, layout.switchControl.y, layout.switchControl.w, layout.switchControl.h, initial);
+        auto* sw = app_ui::makeSwitch(panel, layout.switchControl.x, layout.switchControl.y, layout.switchControl.w,
+                                      layout.switchControl.h, initial);
 
         auto binding = std::make_unique<ToggleBinding>();
         binding->app = this;
-        binding->id = id;
+        binding->id  = id;
         lv_obj_add_event_cb(sw, AppSwitches::onToggle, LV_EVENT_VALUE_CHANGED, binding.get());
         _bindings.push_back(std::move(binding));
     }

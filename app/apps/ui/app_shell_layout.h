@@ -23,16 +23,16 @@ struct AppShellLayout {
 inline AppShellLayout makeAppShellLayout()
 {
     const auto screen = screenRect();
-    const auto safe = safeContentRect();
+    const auto safe   = safeContentRect();
 
     AppShellLayout layout;
-    layout.root = screen;
-    layout.header = {0, 0, screen.w, 72};
+    layout.root       = screen;
+    layout.header     = {0, 0, screen.w, 72};
     layout.backButton = {24, 16, 96, 40};
-    layout.title = {144, 20, 560, 32};
-    layout.chipArea = {736, 14, 400, 44};
-    layout.chip = {0, 2, 96, 32};
-    layout.content = safe;
+    layout.title      = {144, 20, 560, 32};
+    layout.chipArea   = {736, 14, 400, 44};
+    layout.chip       = {0, 2, 96, 32};
+    layout.content    = safe;
     return layout;
 }
 

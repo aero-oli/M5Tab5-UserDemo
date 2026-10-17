@@ -9,9 +9,10 @@ static bool overlap(const app_ui::Rect& a, const app_ui::Rect& b)
 
 int main()
 {
-    const auto l = app_settings_power::makePowerSettingsLayout();
-    std::vector<app_ui::Rect> rects = {l.batteryCard, l.statusTitle, l.statusText, l.detailText, l.wakeButton,
-        l.touchCaption, l.motionCaption, l.dangerCaption, l.intervalLabel, l.intervalSlider};
+    const auto l                    = app_settings_power::makePowerSettingsLayout();
+    std::vector<app_ui::Rect> rects = {l.batteryCard,   l.statusTitle,   l.statusText,    l.detailText,
+                                       l.wakeButton,    l.touchCaption,  l.motionCaption, l.dangerCaption,
+                                       l.intervalLabel, l.intervalSlider};
     for (int i = 0; i < app_settings_power::kPowerSettingsActionCount; ++i) {
         const auto button = app_settings_power::powerSettingsActionRect(l, i);
         assert(button.w >= 180 && button.h >= 44);

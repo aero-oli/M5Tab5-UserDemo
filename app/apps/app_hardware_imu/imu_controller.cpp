@@ -10,7 +10,10 @@
 
 using namespace app_hardware_imu;
 
-ImuController::ImuController(UpdateFn updateFn, DataFn dataFn) : _updateFn(std::move(updateFn)), _dataFn(std::move(dataFn)) {}
+ImuController::ImuController(UpdateFn updateFn, DataFn dataFn)
+    : _updateFn(std::move(updateFn)), _dataFn(std::move(dataFn))
+{
+}
 
 ImuSample ImuController::sample() const
 {
@@ -35,7 +38,8 @@ ImuSample ImuController::cached() const
 std::string ImuController::statusText(const ImuSample& sample, uint32_t nowMs)
 {
     const auto source = sample.simulated ? "Simulated" : "Hardware";
-    if (!sample.hasSample) return sample.error.empty() ? "Waiting for first IMU sample..." : "Unavailable: " + sample.error;
+    if (!sample.hasSample)
+        return sample.error.empty() ? "Waiting for first IMU sample..." : "Unavailable: " + sample.error;
     if (!sample.valid || nowMs - sample.sampledAtMs > 2000)
         return std::string(source) + " - stale" + (sample.error.empty() ? "" : ": " + sample.error);
     return std::string(source) + " - up to 4 Hz while open";

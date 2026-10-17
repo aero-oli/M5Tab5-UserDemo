@@ -58,23 +58,20 @@ private:
                                layout.deviceCard.w, layout.deviceCard.h);
         app_ui::makeMetricCard(content(), "Display", "1280 x 720", layout.displayCard.x, layout.displayCard.y,
                                layout.displayCard.w, layout.displayCard.h);
-        auto* panel = app_ui::makePanel(content(), layout.infoPanel.x, layout.infoPanel.y, layout.infoPanel.w,
-                                        layout.infoPanel.h);
-        auto* registry = app_ui::makeWrappedLabel(
-            panel,
-            "This build uses the modular app registry. Add future tools as app-owned views with controllers, then register metadata once.",
-            layout.registryText.x,
-            layout.registryText.y,
-            &lv_font_montserrat_18,
-            app_ui::theme::color(app_ui::theme::muted));
+        auto* panel    = app_ui::makePanel(content(), layout.infoPanel.x, layout.infoPanel.y, layout.infoPanel.w,
+                                           layout.infoPanel.h);
+        auto* registry = app_ui::makeWrappedLabel(panel,
+                                                  "This build uses the modular app registry. Add future tools as "
+                                                  "app-owned views with controllers, then register metadata once.",
+                                                  layout.registryText.x, layout.registryText.y, &lv_font_montserrat_18,
+                                                  app_ui::theme::color(app_ui::theme::muted));
         lv_obj_set_width(registry, layout.registryText.w);
-        auto* categories = app_ui::makeWrappedLabel(
-            panel,
-            "Settings contains device configuration. Hardware contains diagnostics and physical I/O. Modules contains add-on modules like PPS.",
-            layout.categoryText.x,
-            layout.categoryText.y,
-            &lv_font_montserrat_18,
-            app_ui::theme::color(app_ui::theme::muted));
+        auto* categories =
+            app_ui::makeWrappedLabel(panel,
+                                     "Settings contains device configuration. Hardware contains diagnostics and "
+                                     "physical I/O. Modules contains add-on modules like PPS.",
+                                     layout.categoryText.x, layout.categoryText.y, &lv_font_montserrat_18,
+                                     app_ui::theme::color(app_ui::theme::muted));
         lv_obj_set_width(categories, layout.categoryText.w);
     }
 };

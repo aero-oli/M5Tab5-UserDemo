@@ -49,7 +49,7 @@ void PerformanceTelemetry::recordBackgroundJob(bool busy, const std::string& job
 {
     std::lock_guard<std::mutex> lock(_mutex);
     _snapshot.backgroundBusy = busy;
-    _snapshot.backgroundJob = busy ? jobName : "";
+    _snapshot.backgroundJob  = busy ? jobName : "";
 }
 
 PerformanceSnapshot PerformanceTelemetry::snapshot() const
@@ -70,14 +70,14 @@ void PerformanceTelemetry::reset()
     _snapshot = {};
     _recentAppUpdates.clear();
     _inputCount = _inputNext = 0;
-    _inputPending = false;
+    _inputPending            = false;
 }
 
 void PerformanceTelemetry::recordRender(uint64_t startedUs, uint64_t finishedUs)
 {
     std::lock_guard<std::mutex> lock(_mutex);
     _snapshot.lastRenderUs = finishedUs - startedUs;
-    _snapshot.maxRenderUs = std::max(_snapshot.maxRenderUs, _snapshot.lastRenderUs);
+    _snapshot.maxRenderUs  = std::max(_snapshot.maxRenderUs, _snapshot.lastRenderUs);
     ++_snapshot.renderedFrames;
 }
 void PerformanceTelemetry::recordLock(uint64_t waitUs, uint64_t holdUs)
@@ -96,26 +96,26 @@ void PerformanceTelemetry::recordFlush(uint64_t nowUs)
 {
     std::lock_guard<std::mutex> lock(_mutex);
     if (!_inputPending) return;
-    _inputPending = false;
-    const auto latency = nowUs - _inputStartedUs;
+    _inputPending             = false;
+    const auto latency        = nowUs - _inputStartedUs;
     _inputLatency[_inputNext] = latency;
-    _inputNext = (_inputNext + 1) % _inputLatency.size();
-    _inputCount = std::min(_inputCount + 1, _inputLatency.size());
+    _inputNext                = (_inputNext + 1) % _inputLatency.size();
+    _inputCount               = std::min(_inputCount + 1, _inputLatency.size());
     ++_snapshot.inputSamples;
     _snapshot.maxInputToFlushUs = std::max(_snapshot.maxInputToFlushUs, latency);
 }
 void PerformanceTelemetry::recordResources(uint32_t freeHeap, uint32_t minimumHeap, uint32_t stack, uint32_t tasks)
 {
     std::lock_guard<std::mutex> lock(_mutex);
-    _snapshot.freeHeap = freeHeap;
-    _snapshot.minimumHeap = minimumHeap;
+    _snapshot.freeHeap        = freeHeap;
+    _snapshot.minimumHeap     = minimumHeap;
     _snapshot.uiStackHeadroom = stack;
-    _snapshot.taskCount = tasks;
+    _snapshot.taskCount       = tasks;
 }
 uint64_t app_runtime::monotonicMicros()
 {
-    return std::chrono::duration_cast<std::chrono::microseconds>(
-        std::chrono::steady_clock::now().time_since_epoch()).count();
+    return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch())
+        .count();
 }
 
 uint32_t PerformanceTelemetry::elapsed(uint32_t startedMs, uint32_t finishedMs)

@@ -11,12 +11,15 @@ namespace hal {
 
 struct CameraPreviewTransform {
     float scale = 0;
-    int x = 0;
-    int y = 0;
-    int width = 0;
-    int height = 0;
+    int x       = 0;
+    int y       = 0;
+    int width   = 0;
+    int height  = 0;
 
-    bool valid() const { return scale >= 1.0f / 16.0f && scale < 256.0f && width > 0 && height > 0; }
+    bool valid() const
+    {
+        return scale >= 1.0f / 16.0f && scale < 256.0f && width > 0 && height > 0;
+    }
 };
 
 inline CameraPreviewTransform fitCameraPreview(int sourceWidth, int sourceHeight, int width, int height)
@@ -31,10 +34,10 @@ inline CameraPreviewTransform fitCameraPreview(int sourceWidth, int sourceHeight
     if (result.scale < 1.0f / 16.0f || result.scale >= 256.0f) {
         return {};
     }
-    result.width = static_cast<int>(sourceWidth * result.scale);
+    result.width  = static_cast<int>(sourceWidth * result.scale);
     result.height = static_cast<int>(sourceHeight * result.scale);
-    result.x = (width - result.width) / 2;
-    result.y = (height - result.height) / 2;
+    result.x      = (width - result.width) / 2;
+    result.y      = (height - result.height) / 2;
     return result;
 }
 

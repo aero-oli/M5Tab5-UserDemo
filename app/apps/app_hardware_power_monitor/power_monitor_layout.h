@@ -14,8 +14,8 @@ inline constexpr int kPowerMonitorMetricCount = 4;
 struct PowerMonitorLayout {
     app_ui::Rect content;
     app_ui::Rect description;
-    int cardW = 280;
-    int cardH = 132;
+    int cardW  = 280;
+    int cardH  = 132;
     int colGap = 24;
     int startY = 72;
     app_ui::Rect readoutPanel;
@@ -36,12 +36,12 @@ inline app_ui::Rect powerMonitorMetricRect(const PowerMonitorLayout& layout, int
 inline PowerMonitorLayout makePowerMonitorLayout()
 {
     PowerMonitorLayout layout;
-    layout.content = powerMonitorContentRect();
-    layout.description = {0, 0, layout.content.w, 32};
+    layout.content         = powerMonitorContentRect();
+    layout.description     = {0, 0, layout.content.w, 32};
     const auto firstMetric = powerMonitorMetricRect(layout, 0);
-    layout.readoutPanel = {0, firstMetric.y + firstMetric.h + 32, 1192, 180};
-    layout.readoutTitle = {0, 0, layout.readoutPanel.w - 32, 30};
-    layout.readoutDetail = {0, 48, layout.readoutPanel.w - 32, layout.readoutPanel.h - 76};
+    layout.readoutPanel    = {0, firstMetric.y + firstMetric.h + 32, 1192, 180};
+    layout.readoutTitle    = {0, 0, layout.readoutPanel.w - 32, 30};
+    layout.readoutDetail   = {0, 48, layout.readoutPanel.w - 32, layout.readoutPanel.h - 76};
     return layout;
 }
 

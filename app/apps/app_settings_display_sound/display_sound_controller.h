@@ -18,15 +18,16 @@ enum class SettingId {
 
 struct DisplaySoundSnapshot {
     uint8_t brightness = 0;
-    uint8_t volume = 0;
+    uint8_t volume     = 0;
 };
 
 class DisplaySoundController {
 public:
-    using ReadFn = std::function<uint8_t()>;
+    using ReadFn  = std::function<uint8_t()>;
     using WriteFn = std::function<void(uint8_t value)>;
 
-    DisplaySoundController(ReadFn readBrightnessFn, ReadFn readVolumeFn, WriteFn writeBrightnessFn, WriteFn writeVolumeFn);
+    DisplaySoundController(ReadFn readBrightnessFn, ReadFn readVolumeFn, WriteFn writeBrightnessFn,
+                           WriteFn writeVolumeFn);
 
     DisplaySoundSnapshot read() const;
     uint8_t adjustBrightness(int delta);

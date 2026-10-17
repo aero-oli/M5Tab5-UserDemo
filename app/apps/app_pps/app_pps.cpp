@@ -24,7 +24,7 @@ void AppPps::onOpen()
     mclog::tagInfo(getAppInfo().name, "on open");
 
     _controller = std::make_unique<app_pps::PpsController>();
-    _view = std::make_unique<app_pps::PpsView>(*_controller, [&]() { close(); });
+    _view       = std::make_unique<app_pps::PpsView>(*_controller, [&]() { close(); });
     _view->init();
 }
 

@@ -9,7 +9,9 @@
 
 using namespace app_media_camera;
 
-CameraController::CameraController(CameraCallbacks callbacks) : _callbacks(std::move(callbacks)) {}
+CameraController::CameraController(CameraCallbacks callbacks) : _callbacks(std::move(callbacks))
+{
+}
 
 bool CameraController::start(lv_obj_t* canvas)
 {
@@ -73,11 +75,17 @@ const char* CameraController::stateText(hal::HalBase::CameraState state)
 {
     using State = hal::HalBase::CameraState;
     switch (state) {
-        case State::Stopped: return "Camera stopped";
-        case State::Starting: return "Starting camera";
-        case State::Running: return "Camera running";
-        case State::Stopping: return "Stopping camera";
-        case State::Failed: return "Camera failed";
-        default: return "Camera unavailable";
+        case State::Stopped:
+            return "Camera stopped";
+        case State::Starting:
+            return "Starting camera";
+        case State::Running:
+            return "Camera running";
+        case State::Stopping:
+            return "Stopping camera";
+        case State::Failed:
+            return "Camera failed";
+        default:
+            return "Camera unavailable";
     }
 }

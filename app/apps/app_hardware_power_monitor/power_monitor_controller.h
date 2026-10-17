@@ -13,24 +13,24 @@
 namespace app_hardware_power_monitor {
 
 struct PowerSample {
-    bool hasSample = false;
-    bool valid = false;
-    bool simulated = false;
+    bool hasSample       = false;
+    bool valid           = false;
+    bool simulated       = false;
     uint32_t sampledAtMs = 0;
     std::string error;
-    bool pending = false;
-    float busVoltage = 0.0f;
-    float current = 0.0f;
-    float outputPower = 0.0f;
+    bool pending       = false;
+    float busVoltage   = 0.0f;
+    float current      = 0.0f;
+    float outputPower  = 0.0f;
     float shuntVoltage = 0.0f;
-    int cpuTempC = 0;
-    bool cpuTempValid = false;
+    int cpuTempC       = 0;
+    bool cpuTempValid  = false;
 };
 
 class PowerMonitorController {
 public:
-    using UpdateFn = std::function<void()>;
-    using DataFn = std::function<hal::HalBase::PMData_t()>;
+    using UpdateFn  = std::function<void()>;
+    using DataFn    = std::function<hal::HalBase::PMData_t()>;
     using CpuTempFn = std::function<bool(int&)>;
 
     PowerMonitorController(UpdateFn updateFn, DataFn dataFn, CpuTempFn cpuTempFn);

@@ -3,7 +3,7 @@
 
 namespace app_settings_power {
 inline constexpr int kPowerSettingsActionCount = 4;
-inline constexpr int kPowerOffActionIndex = 3;
+inline constexpr int kPowerOffActionIndex      = 3;
 struct PowerSettingsLayout {
     app_ui::Rect content{0, 0, app_ui::safeContentRect().w, app_ui::safeContentRect().h};
     app_ui::Rect batteryCard{800, 0, 432, 150};
@@ -17,7 +17,10 @@ struct PowerSettingsLayout {
     app_ui::Rect intervalLabel{0, 318, 500, 28};
     app_ui::Rect intervalSlider{18, 374, 464, 24};
 };
-inline PowerSettingsLayout makePowerSettingsLayout() { return {}; }
+inline PowerSettingsLayout makePowerSettingsLayout()
+{
+    return {};
+}
 inline app_ui::Rect powerSettingsActionRect(const PowerSettingsLayout&, int index)
 {
     if (index < 0 || index >= kPowerSettingsActionCount) return {};
@@ -27,4 +30,4 @@ inline app_ui::Rect powerSettingsTitleRect(int index)
 {
     return {0, index == 3 ? 456 : index * 128, 500, 28};
 }
-}
+}  // namespace app_settings_power
