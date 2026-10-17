@@ -23,6 +23,10 @@ static void test_pps_controls_fit_the_controls_panel()
     assert(app_ui::containsLocal(layout.controlsPanel, layout.emergencyOffButton));
     assert(app_ui::containsLocal(layout.controlsPanel, layout.voltageSlider));
     assert(app_ui::containsLocal(layout.controlsPanel, layout.currentSlider));
+    assert(app_ui::containsLocal(layout.controlsPanel, layout.voltageInput));
+    assert(app_ui::containsLocal(layout.controlsPanel, layout.currentInput));
+    assert(layout.voltageInput.y + layout.voltageInput.h < layout.voltageSlider.y);
+    assert(layout.currentInput.y + layout.currentInput.h < layout.currentSlider.y);
     assert(app_ui::containsLocal(layout.controlsPanel, layout.preset33Button));
     assert(app_ui::containsLocal(layout.controlsPanel, layout.preset5Button));
     assert(app_ui::containsLocal(layout.controlsPanel, layout.preset9Button));

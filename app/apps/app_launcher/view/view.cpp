@@ -5,13 +5,11 @@
  */
 #include "view.h"
 #include "launcher_layout.h"
-#include <cstdio>
 #include <utility>
 #include <hal/hal.h>
 #include <mooncake_log.h>
 #include <smooth_lvgl.h>
 #include <apps/utils/audio/audio.h>
-#include <apps/runtime/performance_telemetry.h>
 #include <apps/app_pps/pps_controller.h>
 #include <apps/ui/ui_layout.h>
 #include <apps/ui/ui_components.h>
@@ -37,22 +35,21 @@ void LauncherView::init()
     createLayout();
     renderCategories();
     renderTiles();
-    buildSummary();
     requestHardwareStatus(GetHAL()->millis());
-    renderSummary();
+    refreshStatus();
 }
 
 void LauncherView::update()
 {
     const uint32_t now = GetHAL()->millis();
     requestHardwareStatus(now);
-    if (now - _lastSummaryRefreshMs < 250) {
+    if (now - _lastStatusRefreshMs < 250) {
         return;
     }
 
     LvglLockGuard lock;
-    renderSummary();
-    _lastSummaryRefreshMs = now;
+    refreshStatus();
+    _lastStatusRefreshMs = now;
 }
 
 void LauncherView::requestHardwareStatus(uint32_t nowMs)
@@ -76,14 +73,16 @@ void LauncherView::createLayout()
 
     _topBar = app_ui::makePanel(_root, layout.topBar.x, layout.topBar.y, layout.topBar.w, layout.topBar.h);
 
-    auto* title = app_ui::makeLabel(_topBar, "M5Tab5 Home", 0, 0, &lv_font_montserrat_24, lv_color_hex(0xF2F6FA));
-    lv_obj_align(title, LV_ALIGN_LEFT_MID, 24, 0);
-
-    _statusLabel = app_ui::makeLabel(_topBar, "Ready", 0, 0, &lv_font_montserrat_18, app_ui::theme::color(app_ui::theme::muted));
-    lv_obj_align(_statusLabel, LV_ALIGN_CENTER, 40, 0);
-
-    _timeLabel = app_ui::makeLabel(_topBar, "--:--", 0, 0, &lv_font_montserrat_20, app_ui::theme::color(app_ui::theme::text));
-    lv_obj_align(_timeLabel, LV_ALIGN_RIGHT_MID, -24, 0);
+    lv_obj_set_style_pad_all(_topBar, 0, 0);
+    const auto& titleRect = layout.headerTitle;
+    app_ui::makeFittedLabel(_topBar, "M5Tab5 Home", titleRect.x, titleRect.y, titleRect.w, titleRect.h,
+        &lv_font_montserrat_24, app_ui::theme::color(app_ui::theme::text), LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_LEFT);
+    const auto& statusRect = layout.headerStatus;
+    _statusLabel = app_ui::makeFittedLabel(_topBar, "Network: --", statusRect.x, statusRect.y, statusRect.w, statusRect.h,
+        &lv_font_montserrat_18, app_ui::theme::color(app_ui::theme::muted), LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_CENTER);
+    const auto& timeRect = layout.headerTime;
+    _timeLabel = app_ui::makeFittedLabel(_topBar, "--:--", timeRect.x, timeRect.y, timeRect.w, timeRect.h,
+        &lv_font_montserrat_20, app_ui::theme::color(app_ui::theme::text), LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_RIGHT);
 
     _categoryRail =
         app_ui::makePanel(_root, layout.categoryRail.x, layout.categoryRail.y, layout.categoryRail.w, layout.categoryRail.h);
@@ -94,10 +93,6 @@ void LauncherView::createLayout()
     lv_obj_set_style_bg_color(_tileArea, app_ui::theme::color(0x10171D), 0);
     lv_obj_add_flag(_tileArea, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scrollbar_mode(_tileArea, LV_SCROLLBAR_MODE_AUTO);
-
-    _summaryArea =
-        app_ui::makePanel(_root, layout.summaryArea.x, layout.summaryArea.y, layout.summaryArea.w, layout.summaryArea.h);
-    lv_obj_set_style_pad_all(_summaryArea, 0, 0);
 }
 
 void LauncherView::renderCategories()
@@ -228,86 +223,31 @@ void LauncherView::renderTiles()
                               app->dangerous ? app_ui::theme::color(app_ui::theme::red)
                                              : app_ui::theme::color(app_ui::theme::blue));
 
-        auto* title = app_ui::makeLabel(tile, app->label.c_str(), 0, 0, &lv_font_montserrat_18, app_ui::theme::color(app_ui::theme::text));
-        lv_obj_set_pos(title, layout.tileTitle.x, layout.tileTitle.y);
-        lv_obj_set_width(title, layout.tileTitle.w);
-        lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
+        app_ui::makeFittedLabel(tile, app->label.c_str(), layout.tileTitle.x, layout.tileTitle.y,
+            layout.tileTitle.w, layout.tileTitle.h, &lv_font_montserrat_20, app_ui::theme::color(app_ui::theme::text),
+            LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_LEFT);
+        app_ui::makeFittedLabel(tile, app->description.c_str(), layout.tileDescription.x, layout.tileDescription.y,
+            layout.tileDescription.w, layout.tileDescription.h, &lv_font_montserrat_16,
+            app_ui::theme::color(app_ui::theme::muted), LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_LEFT);
 
-        auto* desc =
-            app_ui::makeLabel(tile, app->description.c_str(), 0, 0, &lv_font_montserrat_14, app_ui::theme::color(app_ui::theme::muted));
-        lv_obj_set_pos(desc, layout.tileDescription.x, layout.tileDescription.y);
-        lv_obj_set_width(desc, layout.tileDescription.w);
-        lv_label_set_long_mode(desc, LV_LABEL_LONG_WRAP);
-
-        auto status = registry().status(app->key);
-        auto* statusLabel = app_ui::makeLabel(tile,
-                                              status.text.empty() ? app->defaultStatus.c_str() : status.text.c_str(),
-                                              0,
-                                              0,
-                                              &lv_font_montserrat_14,
-                                              app_ui::theme::color(0x8FBDE6));
-        lv_obj_set_pos(statusLabel, layout.tileStatus.x, layout.tileStatus.y);
-        lv_obj_set_width(statusLabel, layout.tileStatus.w);
-        lv_label_set_long_mode(statusLabel, LV_LABEL_LONG_DOT);
-        action->status = statusLabel;
+        const auto status = registry().status(app->key);
+        const auto text = status.text.empty() ? app->defaultStatus : status.text;
+        action->status = app_ui::makeFittedLabel(tile, text.c_str(), layout.tileStatus.x, layout.tileStatus.y,
+            layout.tileStatus.w, layout.tileStatus.h, &lv_font_montserrat_16, app_ui::theme::color(app_ui::theme::muted),
+            LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_LEFT);
+        action->lastStatus = text;
 
         _tileActions.push_back(std::move(action));
         ++index;
     }
 }
 
-void LauncherView::buildSummary()
+void LauncherView::refreshStatus()
 {
-    if (_summaryArea == nullptr) {
-        return;
-    }
-    lv_obj_clean(_summaryArea);
-    _summaryRows.clear();
-    auto layout = makeLauncherLayout();
-
-    auto* heading = app_ui::makeLabel(_summaryArea, "Live Summary", 0, 0, &lv_font_montserrat_22, app_ui::theme::color(app_ui::theme::text));
-    lv_obj_set_pos(heading, layout.summaryHeadingX, layout.summaryHeadingY);
-
-    int shown = 0;
-    for (const auto* app : registry().dashboardApps()) {
-        if (shown >= 10) {
-            break;
-        }
-
-        auto* label =
-            app_ui::makeLabel(_summaryArea, app->label.c_str(), 0, 0, &lv_font_montserrat_16, app_ui::theme::color(app_ui::theme::text));
-        auto labelRect = launcherSummaryLabelRect(layout, shown);
-        lv_obj_set_pos(label, labelRect.x, labelRect.y);
-        lv_obj_set_width(label, labelRect.w);
-        lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
-
-        auto* value = app_ui::makeLabel(_summaryArea, "--", 0, 0, &lv_font_montserrat_16, app_ui::theme::color(app_ui::theme::muted));
-        auto valueRect = launcherSummaryValueRect(layout, shown);
-        lv_obj_set_pos(value, valueRect.x, valueRect.y);
-        lv_obj_set_width(value, valueRect.w);
-        lv_label_set_long_mode(value, LV_LABEL_LONG_DOT);
-        lv_obj_set_style_text_align(value, LV_TEXT_ALIGN_RIGHT, 0);
-
-        SummaryRow row;
-        row.key = app->key;
-        row.label = label;
-        row.value = value;
-        _summaryRows.push_back(std::move(row));
-        ++shown;
-    }
-}
-
-void LauncherView::renderSummary()
-{
-    if (_summaryArea == nullptr) {
-        return;
-    }
-    if (_summaryRows.empty()) {
-        buildSummary();
-    }
-
     const auto clockStatus = registry().status(AppKey::Rtc);
     const auto& timeText = clockStatus.text;
+    lv_obj_set_style_text_color(_timeLabel, app_ui::theme::color(clockStatus.level == StatusLevel::Error ? app_ui::theme::red :
+        clockStatus.level == StatusLevel::Warning ? app_ui::theme::amber : app_ui::theme::text), 0);
     if (_lastTimeText != timeText) {
         lv_label_set_text(_timeLabel, timeText.c_str());
         _lastTimeText = timeText;
@@ -316,9 +256,11 @@ void LauncherView::renderSummary()
     for (auto& tile : _tileActions) {
         if (!tile->status) continue;
         const auto status = registry().status(tile->key);
-        if (tile->lastStatus != status.text) {
-            lv_label_set_text(tile->status, status.text.c_str());
-            tile->lastStatus = status.text;
+        const auto* app = registry().find(tile->key);
+        const auto text = status.text.empty() && app ? app->defaultStatus : status.text;
+        if (tile->lastStatus != text) {
+            lv_label_set_text(tile->status, text.c_str());
+            tile->lastStatus = text;
         }
         const auto color = status.level == StatusLevel::Error ? app_ui::theme::red :
             status.level == StatusLevel::Warning ? app_ui::theme::amber :
@@ -326,56 +268,19 @@ void LauncherView::renderSummary()
         lv_obj_set_style_text_color(tile->status, app_ui::theme::color(color), 0);
     }
 
-    for (auto& row : _summaryRows) {
-        auto* app = registry().find(row.key);
-        if (app == nullptr || row.value == nullptr) {
-            continue;
-        }
-        auto status = registry().status(app->key);
-        std::string text = status.text.empty() ? app->defaultStatus : status.text;
-        if (text.empty()) {
-            text = "--";
-        }
-
-        lv_color_t color = app_ui::theme::color(app_ui::theme::muted);
-        if (status.level == StatusLevel::Ok) {
-            color = app_ui::theme::color(app_ui::theme::green);
-        } else if (status.level == StatusLevel::Warning) {
-            color = app_ui::theme::color(app_ui::theme::amber);
-        } else if (status.level == StatusLevel::Error) {
-            color = app_ui::theme::color(app_ui::theme::red);
-        }
-
-        if (row.lastValue != text) {
-            lv_label_set_text(row.value, text.c_str());
-            row.lastValue = text;
-        }
-        if (row.lastLevel != status.level) {
-            lv_obj_set_style_text_color(row.value, color, 0);
-            row.lastLevel = status.level;
-        }
-    }
-
-    auto perf = app_runtime::globalPerformanceTelemetry().snapshot();
-    char statusText[160];
-    if (perf.backgroundBusy && !perf.backgroundJob.empty()) {
-        std::snprintf(statusText, sizeof(statusText), "Task: %s  UI %ums avg %ums", perf.backgroundJob.c_str(),
-                      static_cast<unsigned>(perf.lastAppUpdateMs), static_cast<unsigned>(perf.avgAppUpdateMs));
-    } else {
-        std::snprintf(statusText, sizeof(statusText), "%d apps  UI %ums avg %ums slow %u",
-                      static_cast<int>(registry().all().size()), static_cast<unsigned>(perf.lastAppUpdateMs),
-                      static_cast<unsigned>(perf.avgAppUpdateMs), static_cast<unsigned>(perf.slowAppUpdates));
-    }
+    const auto network = registry().status(AppKey::Network);
+    std::string statusText = "Network: " + network.text;
     const auto pps = app_pps::PpsController::backgroundState();
     const bool ppsOffAlert = pps && (pps->off == app_pps::OffState::Pending || pps->off == app_pps::OffState::Unconfirmed);
     if (ppsOffAlert) {
-        std::snprintf(statusText, sizeof(statusText), "%s - open PPS",
-                      pps->off == app_pps::OffState::Pending ? "PPS off pending" : "PPS OFF UNCONFIRMED");
+        statusText = std::string(pps->off == app_pps::OffState::Pending ? "PPS off pending" : "PPS OFF UNCONFIRMED") + " - open PPS";
     }
-    lv_obj_set_style_text_color(_statusLabel,
-        app_ui::theme::color(ppsOffAlert ? app_ui::theme::red : app_ui::theme::muted), 0);
+    const auto statusColor = ppsOffAlert || network.level == StatusLevel::Error ? app_ui::theme::red :
+        network.level == StatusLevel::Warning ? app_ui::theme::amber :
+        network.level == StatusLevel::Ok ? app_ui::theme::green : app_ui::theme::muted;
+    lv_obj_set_style_text_color(_statusLabel, app_ui::theme::color(statusColor), 0);
     if (_lastStatusText != statusText) {
-        lv_label_set_text(_statusLabel, statusText);
+        lv_label_set_text(_statusLabel, statusText.c_str());
         _lastStatusText = statusText;
     }
 }

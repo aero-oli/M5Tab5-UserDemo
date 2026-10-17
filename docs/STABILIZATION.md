@@ -33,7 +33,7 @@ Do not describe a desktop simulator pass as electrical, DMA, wake, radio or OTA 
 | 3 | Camera failed-stop safety, BMI270 wake rollback, audio ownership/cancellation, brightness recovery, visible PPS off failure | Software gate passed: 61/61 desktop tests; focused final rerun; Tab5 build |
 | 4 | Truthful RTC/SD/sensor results, restore RTC setting, fresh Home status | Software gate passed: 65/65 desktop tests; RTC fault journeys; Tab5 build |
 | 5 | Wi-Fi restoration/recovery; verified HTTPS OTA, progress, cancellation, confirmation and recovery | Software gate passed: 72/72 desktop tests; OTA fault/cancel journeys; Tab5 build |
-| 6 | Focused Home, exact PPS entry, populated logs/files/networks, keyboard/error/busy journeys | Pending |
+| 6 | Focused Home, exact PPS entry, populated logs/files/networks, keyboard/error/busy journeys | Software gate passed: 75 desktop checks (guard rename rerun); populated render/pointer journeys; Tab5 build |
 | 7 | Build/test CI, separate smoke harness, extension contracts, device acceptance and release procedure | Pending |
 
 Feature parity checklist: launcher/categories; Network scan/select/connect/disconnect/forget/AP;
@@ -161,3 +161,23 @@ claiming rollback support. Existing-device partition/bootloader identity is unkn
 been authorized or tested. Actual TLS interoperability, radio recovery, flash interruption and rollback remain device
 acceptance gates. The SDK source used for this implementation is the pinned local v5.4.2 checkout, particularly
 `esp_http_client`, `app_update/esp_ota_ops.c`, `bootloader_support`, and the system/timer startup code.
+
+## Milestone 6 usability contract
+
+Verified 2026-10-17: 74/75 tests passed in the full run, then the remaining source guard passed after
+updating its reference to the renamed Home refresh function. Focused PPS, SD, COM and UART regressions
+passed; UART/SD/COM also passed ASan. Rendered Home, PPS exact entry/editor, final network row, capped
+SD listing and COM tail/reopen were inspected. LVGL pointer targeting confirms fixed critical controls
+remain reachable. Final Tab5 firmware build passed; no hardware was connected or flashed.
+
+Home uses the category rail and six readable shortcuts; diagnostics remain in Diagnostics. PPS has exact decimal
+entry with strict limits, explicit Apply/Enable separation and a header Emergency Off available during editing.
+LVGL target fields must not use `max_length` or `accepted_chars` with the PPS change callback: those options emit
+per-character changes during `set_text`. Complete values are parsed atomically; parser length/range checks reject
+invalid drafts. Saving an unchanged setpoint preserves its verified state.
+
+SD results and COM logs use bounded viewports, retaining fixed actions. SD duplicate requests preserve an in-flight
+result. COM retains 2,000 displayed bytes and follows the tail only when already there. UART worker storage is shared,
+queues are bounded, driver operations run outside the UI queue mutex, and shutdown waits for driver cleanup. The
+single worker owns UART SDK calls, including the SDK's internal TX mutex. Desktop echo creates no detached thread.
+Network lists retain selection/scroll position during status refresh and support full 32-byte SSIDs in bounded rows.

@@ -49,12 +49,16 @@ public:
     void onClose() override
     {
         _shell.reset();
+        _status = _scanButton = _results = nullptr;
     }
 
 private:
     SdCardController _controller;
     std::unique_ptr<app_ui::AppShell> _shell;
     lv_obj_t* _status = nullptr;
+    lv_obj_t* _scanButton = nullptr;
+    lv_obj_t* _results = nullptr;
+    std::string _renderedText;
     uint32_t _lastUpdateMs = 0;
 
     lv_obj_t* content() const
@@ -72,9 +76,9 @@ private:
                                               app_ui::theme::color(app_ui::theme::muted));
         lv_obj_set_width(description, layout.description.w);
         lv_label_set_long_mode(description, LV_LABEL_LONG_DOT);
-        auto* button = app_ui::makeButton(content(), "Scan SD Card", layout.scanButton.x, layout.scanButton.y,
+        _scanButton = app_ui::makeButton(content(), "Scan SD Card", layout.scanButton.x, layout.scanButton.y,
                                           layout.scanButton.w, layout.scanButton.h, app_ui::ButtonKind::Primary);
-        lv_obj_add_event_cb(button, AppSdCard::onScan, LV_EVENT_CLICKED, this);
+        lv_obj_add_event_cb(_scanButton, AppSdCard::onScan, LV_EVENT_CLICKED, this);
 
         auto* panel = app_ui::makePanel(content(), layout.resultsPanel.x, layout.resultsPanel.y,
                                         layout.resultsPanel.w, layout.resultsPanel.h);
@@ -82,11 +86,14 @@ private:
                                         &lv_font_montserrat_20, app_ui::theme::color(app_ui::theme::text));
         lv_obj_set_width(title, layout.resultsTitle.w);
         lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
-        _status = app_ui::makeLabel(panel, _controller.statusText().c_str(), layout.resultsText.x,
-                                    layout.resultsText.y, &lv_font_montserrat_18,
+        _results = app_ui::makeScrollableContent(panel, layout.resultsText.x, layout.resultsText.y,
+                                                 layout.resultsText.w, layout.resultsText.h);
+        _renderedText = _controller.statusText();
+        _status = app_ui::makeLabel(_results, _renderedText.c_str(), 0, 0, &lv_font_montserrat_18,
                                     app_ui::theme::color(app_ui::theme::text));
-        lv_obj_set_width(_status, layout.resultsText.w);
+        lv_obj_set_width(_status, layout.resultsText.w - 20);
         lv_label_set_long_mode(_status, LV_LABEL_LONG_WRAP);
+        refreshView();
     }
 
     void startScan()
@@ -98,12 +105,20 @@ private:
 
     void refreshView()
     {
-        if (_status != nullptr) {
-            lv_label_set_text(_status, _controller.statusText().c_str());
-            lv_obj_set_style_text_color(_status,
-                                        _controller.busy() ? app_ui::theme::color(app_ui::theme::amber)
-                                                           : app_ui::theme::color(app_ui::theme::text),
-                                        0);
+        const bool busy = _controller.busy();
+        if (_scanButton) {
+            if (busy) lv_obj_add_state(_scanButton, LV_STATE_DISABLED);
+            else lv_obj_remove_state(_scanButton, LV_STATE_DISABLED);
+        }
+        if (_status) {
+            const auto text = _controller.statusText();
+            if (text != _renderedText) {
+                _renderedText = text;
+                lv_label_set_text(_status, text.c_str());
+                lv_obj_scroll_to_y(_results, 0, LV_ANIM_OFF);
+            }
+            lv_obj_set_style_text_color(_status, busy ? app_ui::theme::color(app_ui::theme::amber)
+                                                     : app_ui::theme::color(app_ui::theme::text), 0);
         }
     }
 

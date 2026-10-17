@@ -251,7 +251,9 @@ hal::HalBase::SdScanResult HalDesktop::scanSdCardResult(const std::string& dirPa
 {
     SdScanResult result{SdScanStatus::Success, {}, {}, true};
     std::error_code error;
-    std::filesystem::directory_iterator it(dirPath, error), end;
+    const char* fixtureRoot = std::getenv("M5TAB5_DESKTOP_SD_ROOT");
+    const std::string path = fixtureRoot && dirPath == "/" ? fixtureRoot : dirPath;
+    std::filesystem::directory_iterator it(path, error), end;
     if (error) return {SdScanStatus::ReadFailed, {}, "Could not open desktop directory: " + error.message(), true};
     for (; it != end; it.increment(error)) {
         if (error) break;
@@ -418,24 +420,7 @@ bool HalDesktop::i2cWriteRegister(hal::ModuleBus bus, uint8_t address, uint8_t r
 /* -------------------------------------------------------------------------- */
 /*                                UART monitor                                */
 /* -------------------------------------------------------------------------- */
-void HalDesktop::uartMonitorSend(std::string msg, bool newLine)
+bool HalDesktop::uartMonitorSend(std::string msg, bool newLine)
 {
-    static bool is_test_thread_running = false;
-    if (is_test_thread_running) {
-        return;
-    }
-
-    is_test_thread_running = true;
-    std::thread([&]() {
-        for (int i = 0; i < 6; i++) {
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-            std::lock_guard<std::mutex> lock(GetHAL()->uartMonitorData.mutex);
-            std::string send_msg = "[2025-04-24 14:32:38.111] [info] [panel-com] recv msg: 32\n";
-            mclog::tagInfo(_tag, "send msg: {}", send_msg);
-            for (auto c : send_msg) {
-                GetHAL()->uartMonitorData.rxQueue.push(c);
-            }
-        }
-        is_test_thread_running = false;
-    }).detach();
+    return _uartMonitorState->echo(msg, newLine);
 }

@@ -17,6 +17,7 @@ int main()
         [&](const std::string& msg, bool newLine) {
             sent = msg;
             sentNewline = newLine;
+            return true;
         });
 
     auto sample = controller.drainRx();
@@ -33,9 +34,18 @@ int main()
     assert(sample.bytesRead == 800);
     assert(data.rxQueue.size() == 100);
 
-    controller.sendTestMessage();
+    assert(controller.sendTestMessage());
     assert(sent == "hello from Tab5");
     assert(sentNewline);
 
+    std::string burst(hal::UartMonitorState::kCapacity, 'a');
+    data.appendRx(reinterpret_cast<const uint8_t*>(burst.data()), burst.size());
+    while (!data.rxQueue.empty()) controller.drainRx();
+    assert(controller.logText().size() == controller.kLogBytes);
+    const std::string tail = "latest row\n";
+    data.appendRx(reinterpret_cast<const uint8_t*>(tail.data()), tail.size());
+    controller.drainRx();
+    assert(controller.logText().size() == controller.kLogBytes);
+    assert(controller.logText().substr(controller.logText().size() - tail.size()) == tail);
     return 0;
 }

@@ -190,6 +190,17 @@ SD scanning reports mount/read/cleanup errors separately from an empty directory
 limits results to 256 entries with a visible truncation notice. These software checks do not establish physical card,
 RTC backup, sensor accuracy, or board-connection behavior; see [stabilization and acceptance](docs/STABILIZATION.md).
 
+PPS accepts decimal voltage/current entry up to three places (0.500-30.000 V and 0.000-5.000 A).
+This is input precision, not a claim of physical output accuracy. Editing stages values; Apply writes and verifies
+setpoints while output is off, and Enable is a separate action. Invalid input blocks Apply/Enable. Emergency Off
+remains in the header during keyboard editing and discards the draft before requesting shutdown.
+
+Home presents six shortcuts without a duplicate summary sidebar. SD results, network scans and COM logs scroll
+inside their own panels while Back and primary actions stay fixed. COM keeps the last 2,000 displayed bytes and
+follows new data only while viewing the end. UART receive/transmit queues are bounded; rejected messages are
+reported, and serial workers finish driver cleanup before HAL destruction. Desktop serial data is simulated echo.
+
+
 ## Acknowledgments
 
 This project references the following open-source libraries and resources:

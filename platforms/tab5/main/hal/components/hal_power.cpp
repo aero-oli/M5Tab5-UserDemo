@@ -83,6 +83,10 @@ bool HalEsp32::getExt5vEnable()
 
 HalEsp32::~HalEsp32()
 {
+    if (!stopUartAndWait(2000)) {
+        mclog::tagError(_tag, "UART still active during HAL destruction");
+        std::abort();
+    }
     lvglLock();
     if (_sleepInput && _touchReader && lv_indev_get_read_cb(_sleepInput) == readSleepTouch)
         lv_indev_set_read_cb(_sleepInput, _touchReader);

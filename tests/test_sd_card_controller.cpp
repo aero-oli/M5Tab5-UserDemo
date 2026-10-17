@@ -61,6 +61,9 @@ void test_async_error_and_destruction()
     assert(controller->startScan());
     assert(entered.get_future().wait_for(seconds(2)) == std::future_status::ready);
     assert(controller->busy());
+    const auto scanning = controller->statusText();
+    assert(!controller->startScan());
+    assert(controller->busy() && controller->statusText() == scanning);
     controller.reset();
     release.set_value();
     assert(app_runtime::AsyncJobRunner::waitForAll(5000));
@@ -71,10 +74,36 @@ void test_async_error_and_destruction()
     assert(!failed.busy() && failed.statusText().find("mount failed") != std::string::npos);
 }
 
+void test_duplicate_scan_preserves_the_pending_result()
+{
+    using namespace std::chrono;
+    std::promise<void> entered, release;
+    auto gate = release.get_future().share();
+    int calls = 0;
+    Controller controller([&](const std::string&) {
+        ++calls;
+        entered.set_value();
+        gate.wait();
+        return Result{Status::Success, {{"retained-result.bin", false}}, {}};
+    });
+    assert(controller.startScan());
+    assert(entered.get_future().wait_for(seconds(2)) == std::future_status::ready);
+    assert(!controller.startScan());
+    assert(controller.busy() && controller.statusText() == "Scanning SD card...");
+    release.set_value();
+    assert(app_runtime::AsyncJobRunner::waitForAll(5000));
+    // Even after the global worker finishes, local ownership lasts until refresh.
+    assert(!controller.startScan() && controller.busy());
+    controller.refresh();
+    assert(!controller.busy() && calls == 1);
+    assert(controller.statusText().find("retained-result.bin") != std::string::npos);
+}
+
 int main()
 {
     test_result_semantics();
     test_mounted_session_cleanup();
     test_async_error_and_destruction();
+    test_duplicate_scan_preserves_the_pending_result();
     assert(app_runtime::AsyncJobRunner::waitForAll(5000));
 }

@@ -26,7 +26,7 @@ class AppComMonitor : public mooncake::AppAbility {
 public:
     AppComMonitor()
         : _controller([]() -> hal::HalBase::UartMonitorData_t& { return GetHAL()->uartMonitorData; },
-                      [](const std::string& msg, bool newLine) { GetHAL()->uartMonitorSend(msg, newLine); })
+                      [](const std::string& msg, bool newLine) { return GetHAL()->uartMonitorSend(msg, newLine); })
     {
         setAppInfo().name = "COM Monitor";
     }
@@ -52,6 +52,7 @@ public:
     void onClose() override
     {
         _shell.reset();
+        _log = _status = _logViewport = nullptr;
     }
 
 private:
@@ -59,7 +60,7 @@ private:
     std::unique_ptr<app_ui::AppShell> _shell;
     lv_obj_t* _log = nullptr;
     lv_obj_t* _status = nullptr;
-    std::string _logText;
+    lv_obj_t* _logViewport = nullptr;
     uint32_t _lastUpdateMs = 0;
 
     lv_obj_t* content() const
@@ -83,10 +84,15 @@ private:
                                         app_ui::theme::color(app_ui::theme::text));
         lv_obj_set_width(title, layout.logTitle.w);
         lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
-        _log = app_ui::makeLabel(panel, "No data received.", layout.logText.x, layout.logText.y, &lv_font_montserrat_18,
-                                 app_ui::theme::color(app_ui::theme::muted));
-        lv_obj_set_width(_log, layout.logText.w);
+        _logViewport = app_ui::makeScrollableContent(panel, layout.logText.x, layout.logText.y,
+                                                     layout.logText.w, layout.logText.h);
+        const auto& retained = _controller.logText();
+        _log = app_ui::makeLabel(_logViewport, retained.empty() ? "No data received." : retained.c_str(),
+                                 0, 0, &lv_font_montserrat_18, app_ui::theme::color(app_ui::theme::muted));
+        lv_obj_set_width(_log, layout.logText.w - 20);
         lv_label_set_long_mode(_log, LV_LABEL_LONG_WRAP);
+        lv_obj_update_layout(_logViewport);
+        lv_obj_scroll_to_y(_logViewport, lv_obj_get_scroll_bottom(_logViewport), LV_ANIM_OFF);
 
         auto* send = app_ui::makeButton(content(), "Send Test Message", layout.sendButton.x, layout.sendButton.y,
                                         layout.sendButton.w, layout.sendButton.h, app_ui::ButtonKind::Primary);
@@ -101,28 +107,29 @@ private:
     void refresh()
     {
         auto sample = _controller.drainRx();
-        if (sample.text.empty()) {
-            return;
+        if (!sample.text.empty() && _log) {
+            lv_obj_update_layout(_logViewport);
+            const bool followTail = lv_obj_get_scroll_bottom(_logViewport) <= 4;
+            lv_label_set_text(_log, _controller.logText().c_str());
+            lv_obj_update_layout(_logViewport);
+            if (followTail) lv_obj_scroll_to_y(_logViewport,
+                lv_obj_get_scroll_y(_logViewport) + lv_obj_get_scroll_bottom(_logViewport), LV_ANIM_OFF);
         }
-        _logText += sample.text;
-        if (_logText.size() > 2000) {
-            _logText.erase(0, _logText.size() - 2000);
-        }
-        if (_log != nullptr) {
-            lv_label_set_text(_log, _logText.c_str());
-        }
-        if (_status != nullptr) {
-            lv_label_set_text_fmt(_status, "Received %u bytes this poll. Showing last 2000 bytes.",
-                                  static_cast<unsigned>(sample.bytesRead));
+        if (_status) {
+            if (!sample.error.empty()) lv_label_set_text_fmt(_status, "UART unavailable: %s", sample.error.c_str());
+            else if (!sample.text.empty()) lv_label_set_text_fmt(_status, "%sReceived %u bytes. Last %u bytes; RX dropped %u.",
+                sample.simulated ? "Simulation: " : "", static_cast<unsigned>(sample.bytesRead),
+                static_cast<unsigned>(ComMonitorController::kLogBytes), static_cast<unsigned>(sample.dropped));
+            else if (sample.simulated) lv_label_set_text(_status, "Simulation: showing retained RX log.");
         }
     }
 
     void sendTestMessage()
     {
         audio::play_next_tone_progression();
-        _controller.sendTestMessage();
+        const bool accepted = _controller.sendTestMessage();
         if (_status != nullptr) {
-            lv_label_set_text(_status, "Sent test message with newline.");
+            lv_label_set_text(_status, accepted ? "Queued test message with newline." : "UART unavailable or transmit queue full.");
         }
     }
 

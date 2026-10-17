@@ -6,6 +6,7 @@
 #pragma once
 #include "gpio_diagnostics.h"
 #include "power_control.h"
+#include "uart_monitor.h"
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -609,22 +610,21 @@ public:
     }
 
     /* ------------------------------ UART monitor ------------------------------ */
-    struct UartMonitorData_t {
-        std::mutex mutex;
-        std::queue<uint8_t> rxQueue;
-        std::queue<uint8_t> txQueue;
-    };
-    UartMonitorData_t uartMonitorData;
-    virtual void uartMonitorSend(std::string msg, bool newLine = true)
+    using UartMonitorData_t = UartMonitorState;
+protected:
+    std::shared_ptr<UartMonitorData_t> _uartMonitorState = std::make_shared<UartMonitorData_t>();
+public:
+    UartMonitorData_t& uartMonitorData = *_uartMonitorState;
+    virtual bool uartMonitorSend(std::string msg, bool newLine = true)
     {
-        std::lock_guard<std::mutex> lock(uartMonitorData.mutex);
-        for (auto c : msg) {
-            uartMonitorData.txQueue.push(c);
-        }
-        if (newLine) {
-            uartMonitorData.txQueue.push('\n');
-        }
+        return _uartMonitorState->queueTx(msg, newLine);
     }
+    virtual bool stopUartAndWait(uint32_t timeoutMs)
+    {
+        _uartMonitorState->requestStop();
+        return _uartMonitorState->waitForWorker(timeoutMs);
+    }
+
 };
 
 /**

@@ -35,29 +35,19 @@ private:
         std::string lastStatus;
     };
 
-    struct SummaryRow {
-        app_registry::AppKey key = app_registry::AppKey::Rtc;
-        lv_obj_t* label = nullptr;
-        lv_obj_t* value = nullptr;
-        std::string lastValue;
-        app_registry::StatusLevel lastLevel = app_registry::StatusLevel::Neutral;
-    };
-
     lv_obj_t* _root = nullptr;
     lv_obj_t* _topBar = nullptr;
     lv_obj_t* _categoryRail = nullptr;
     lv_obj_t* _tileArea = nullptr;
-    lv_obj_t* _summaryArea = nullptr;
     lv_obj_t* _timeLabel = nullptr;
     lv_obj_t* _statusLabel = nullptr;
     lv_obj_t* _emptyLabel = nullptr;
     app_registry::AppCategory _selectedCategory = app_registry::AppCategory::Home;
     std::vector<std::unique_ptr<CategoryAction>> _categoryActions;
     std::vector<std::unique_ptr<TileAction>> _tileActions;
-    std::vector<SummaryRow> _summaryRows;
     std::string _lastStatusText;
     std::string _lastTimeText;
-    uint32_t _lastSummaryRefreshMs = 0;
+    uint32_t _lastStatusRefreshMs = 0;
     uint32_t _lastHardwarePollMs = 0;
     bool _hardwarePolled = false;
     app_runtime::AsyncJobRunner _statusSampler;
@@ -66,8 +56,7 @@ private:
     void renderCategories();
     void refreshCategoryStyles();
     void renderTiles();
-    void buildSummary();
-    void renderSummary();
+    void refreshStatus();
     void requestHardwareStatus(uint32_t nowMs);
     void selectCategory(app_registry::AppCategory category);
     void openApp(app_registry::AppKey key);

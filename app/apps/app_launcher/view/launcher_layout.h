@@ -15,7 +15,9 @@ struct LauncherLayout {
     app_ui::Rect topBar;
     app_ui::Rect categoryRail;
     app_ui::Rect tileArea;
-    app_ui::Rect summaryArea;
+    app_ui::Rect headerTitle;
+    app_ui::Rect headerStatus;
+    app_ui::Rect headerTime;
     app_ui::Rect tileIcon;
     app_ui::Rect tileTitle;
     app_ui::Rect tileDescription;
@@ -32,18 +34,10 @@ struct LauncherLayout {
     int tileHeadingY = 16;
     int tileGridX = 20;
     int tileGridY = 62;
-    int tileW = 214;
-    int tileH = 142;
+    int tileW = 308;
+    int tileH = 184;
     int tileGap = 18;
     int tileColumns = 3;
-    int summaryHeadingX = 18;
-    int summaryHeadingY = 16;
-    int summaryRowY = 64;
-    int summaryRowH = 38;
-    int summaryLabelX = 18;
-    int summaryLabelW = 126;
-    int summaryValueW = 150;
-    int summaryRightPad = 18;
 };
 
 inline LauncherLayout makeLauncherLayout()
@@ -51,30 +45,31 @@ inline LauncherLayout makeLauncherLayout()
     auto screen = app_ui::screenRect();
     auto safe = app_ui::safeContentRect();
     constexpr int railW = 210;
-    constexpr int summaryW = 318;
     constexpr int gap = 20;
-    const auto columns = app_ui::makeColumns(safe, {railW, 0, summaryW}, gap);
+    const auto columns = app_ui::makeColumns(safe, {railW, 0}, gap);
 
     LauncherLayout layout;
     layout.screen = screen;
     layout.safe = safe;
     layout.topBar = {0, 0, screen.w, 72};
-    layout.categoryRail = columns.size() == 3 ? columns[0] : app_ui::Rect{safe.x, safe.y, railW, safe.h};
-    layout.tileArea = columns.size() == 3 ? columns[1] : app_ui::Rect{safe.x + railW + gap, safe.y, 0, safe.h};
-    layout.summaryArea = columns.size() == 3 ? columns[2] : app_ui::Rect{safe.x + railW + gap, safe.y, summaryW, safe.h};
+    layout.headerTitle = {24, 20, 224, 32};
+    layout.headerStatus = {280, 25, 650, 24};
+    layout.headerTime = {962, 25, 294, 24};
+    layout.categoryRail = columns.size() == 2 ? columns[0] : app_ui::Rect{safe.x, safe.y, railW, safe.h};
+    layout.tileArea = columns.size() == 2 ? columns[1] : app_ui::Rect{safe.x + railW + gap, safe.y, 0, safe.h};
     layout.columnGap = gap;
     layout.tileColumns = 3;
     layout.tileGap = 18;
     layout.tileGridX = 20;
     layout.tileGridY = 62;
-    constexpr int tileRightMargin = 16;
+    constexpr int tileRightMargin = 20;
     layout.tileW = (layout.tileArea.w - layout.tileGridX - tileRightMargin - (layout.tileGap * (layout.tileColumns - 1))) /
                    layout.tileColumns;
-    layout.tileH = 142;
-    layout.tileIcon = {14, 14, 42, 42};
-    layout.tileTitle = {66, 17, layout.tileW - 82, 24};
-    layout.tileDescription = {16, 70, layout.tileW - 32, 44};
-    layout.tileStatus = {16, layout.tileH - 36, layout.tileW - 32, 24};
+    layout.tileH = 184;
+    layout.tileIcon = {16, 16, 48, 48};
+    layout.tileTitle = {78, 25, layout.tileW - 94, 28};
+    layout.tileDescription = {16, 82, layout.tileW - 32, 48};
+    layout.tileStatus = {16, 148, layout.tileW - 32, 24};
     return layout;
 }
 
@@ -97,26 +92,6 @@ inline app_ui::Rect launcherTileRect(const LauncherLayout& layout, int index)
         layout.tileGridY + row * (layout.tileH + layout.tileGap),
         layout.tileW,
         layout.tileH,
-    };
-}
-
-inline app_ui::Rect launcherSummaryLabelRect(const LauncherLayout& layout, int index)
-{
-    return {
-        layout.summaryLabelX,
-        layout.summaryRowY + index * layout.summaryRowH,
-        layout.summaryLabelW,
-        24,
-    };
-}
-
-inline app_ui::Rect launcherSummaryValueRect(const LauncherLayout& layout, int index)
-{
-    return {
-        layout.summaryArea.w - layout.summaryRightPad - layout.summaryValueW,
-        layout.summaryRowY + index * layout.summaryRowH,
-        layout.summaryValueW,
-        24,
     };
 }
 

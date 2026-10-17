@@ -20,6 +20,8 @@ struct PpsLayout {
     app_ui::Rect emergencyOffButton;
     app_ui::Rect voltageSlider;
     app_ui::Rect currentSlider;
+    app_ui::Rect voltageInput;
+    app_ui::Rect currentInput;
     app_ui::Rect preset33Button;
     app_ui::Rect preset5Button;
     app_ui::Rect preset9Button;
@@ -50,6 +52,8 @@ inline PpsLayout makePpsLayout()
         {344, 44, 204, 54},
         {0, 166, 548, 18},
         {0, 252, 548, 18},
+        {300, 116, 248, 44},
+        {300, 202, 248, 44},
         {0, 306, 88, 44},
         {98, 306, 88, 44},
         {196, 306, 88, 44},

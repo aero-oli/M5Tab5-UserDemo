@@ -11,6 +11,7 @@
 #include <apps/ui/ui_components.h>
 #include <apps/ui/ui_theme.h>
 #include "pps_layout.h"
+#include "pps_input.h"
 
 using namespace app_pps;
 
@@ -47,7 +48,10 @@ void PpsView::init()
     _shell->init();
 
     LvglLockGuard lock;
-    _shell->setStatusChips({"I2C 0x35", "100W"});
+    _shell->setHeaderAction("Emergency Off", [this]() {
+        _controller.emergencyOff(GetHAL()->millis());
+        refreshAll(GetHAL()->millis());
+    });
     _root = _shell->content();
 
     createHeader();
@@ -126,6 +130,17 @@ void PpsView::createControls()
     _currentSet = app_ui::makeLabel(panel, "Set A: 1.00 A", 0, 214, &lv_font_montserrat_20, lv_color_hex(0xF3F7FB));
     _currentSlider = app_ui::makeSlider(panel, layout.currentSlider.x, layout.currentSlider.y, layout.currentSlider.w, layout.currentSlider.h, 0, 500, 100);
     lv_obj_add_event_cb(_currentSlider, PpsView::onSliderChanged, LV_EVENT_VALUE_CHANGED, this);
+
+    const auto makeInput = [this, panel](const char* hint, const app_ui::Rect& rect) {
+        auto* input = app_ui::makeTextArea(panel, hint, rect.x, rect.y, rect.w, rect.h);
+        // Keep set_text atomic: LVGL emits per-character changes when max_length
+        // is set. The parser rejects overlong input before staging any value.
+        _shell->bindTextInput(input);
+        lv_obj_add_event_cb(input, PpsView::onInputChanged, LV_EVENT_VALUE_CHANGED, this);
+        return input;
+    };
+    _voltageInput = makeInput("Voltage: 0.500-30.000 V", layout.voltageInput);
+    _currentInput = makeInput("Current: 0.000-5.000 A", layout.currentInput);
 
     createButton(_preset33, "3.3V", layout.preset33Button.x, layout.preset33Button.y, layout.preset33Button.w, layout.preset33Button.h, lv_color_hex(0x3B556C));
     createButton(_preset5, "5V", layout.preset5Button.x, layout.preset5Button.y, layout.preset5Button.w, layout.preset5Button.h, lv_color_hex(0x3B556C));
@@ -228,7 +243,8 @@ void PpsView::refreshAll(uint32_t nowMs)
     } else {
         lv_obj_remove_state(_outputSwitch, LV_STATE_CHECKED);
     }
-    if (state.output == OutputState::Enabled || PpsController::canEnable(state)) {
+    if (state.output == OutputState::Enabled ||
+        (!_voltageInvalid && !_currentInvalid && PpsController::canEnable(state))) {
         lv_obj_remove_state(_outputSwitch, LV_STATE_DISABLED);
     } else {
         lv_obj_add_state(_outputSwitch, LV_STATE_DISABLED);
@@ -237,8 +253,9 @@ void PpsView::refreshAll(uint32_t nowMs)
     lv_slider_set_value(_currentSlider, static_cast<int>(state.pendingCurrent * 100.0f), LV_ANIM_OFF);
     _syncingControls = false;
     refreshPendingLabels();
+    syncInputs();
 
-    if (PpsController::canApply(state)) {
+    if (!_voltageInvalid && !_currentInvalid && PpsController::canApply(state)) {
         lv_obj_remove_state(_applyButton, LV_STATE_DISABLED);
     } else {
         lv_obj_add_state(_applyButton, LV_STATE_DISABLED);
@@ -253,7 +270,9 @@ void PpsView::refreshAll(uint32_t nowMs)
                           static_cast<unsigned>(pollAge));
     setLabel(_diagnostics, diagnostics);
 
-    const char* error = !state.lastCommandError.empty() ? state.lastCommandError.c_str() :
+    const char* error = _voltageInvalid ? "Enter voltage from 0.500 to 30.000 V (up to 3 decimal places)." :
+                        _currentInvalid ? "Enter current from 0.000 to 5.000 A (up to 3 decimal places)." :
+                        !state.lastCommandError.empty() ? state.lastCommandError.c_str() :
                         !telemetry.lastError.empty() ? telemetry.lastError.c_str() :
                         state.commandPending ? state.commandStatus.c_str() :
                         !state.hasTelemetry ? "Checking PPS..." : "";
@@ -263,8 +282,46 @@ void PpsView::refreshAll(uint32_t nowMs)
 void PpsView::refreshPendingLabels()
 {
     const auto& state = _controller.state();
-    setFloatLabel(_voltageSet, "Set V: %.1f V", state.pendingVoltage);
-    setFloatLabel(_currentSet, "Set A: %.2f A", state.pendingCurrent);
+    setFloatLabel(_voltageSet, "Set V: %.3f V", state.pendingVoltage);
+    setFloatLabel(_currentSet, "Set A: %.3f A", state.pendingCurrent);
+}
+
+void PpsView::syncInputs(bool resetInvalid)
+{
+    if (resetInvalid) {
+        _voltageInvalid = _currentInvalid = false;
+        _lastInputVoltage = _lastInputCurrent = -1;
+    }
+    const auto state = _controller.state();
+    _syncingControls = true;
+    char text[24];
+    if (!_voltageInvalid && state.pendingVoltage != _lastInputVoltage) {
+        std::snprintf(text, sizeof(text), "%.3f", static_cast<double>(state.pendingVoltage));
+        lv_textarea_set_text(_voltageInput, text);
+        _lastInputVoltage = state.pendingVoltage;
+    }
+    if (!_currentInvalid && state.pendingCurrent != _lastInputCurrent) {
+        std::snprintf(text, sizeof(text), "%.3f", static_cast<double>(state.pendingCurrent));
+        lv_textarea_set_text(_currentInput, text);
+        _lastInputCurrent = state.pendingCurrent;
+    }
+    _syncingControls = false;
+}
+
+void PpsView::onInputChanged(lv_event_t* event)
+{
+    auto* view = static_cast<PpsView*>(lv_event_get_user_data(event));
+    if (view->_syncingControls) return;
+    auto* target = static_cast<lv_obj_t*>(lv_event_get_target(event));
+    float value = 0;
+    if (target == view->_voltageInput) {
+        view->_voltageInvalid = !parseSetpoint(lv_textarea_get_text(target), 500, 30000, value);
+        if (!view->_voltageInvalid) view->_controller.setPendingVoltage(value);
+    } else if (target == view->_currentInput) {
+        view->_currentInvalid = !parseSetpoint(lv_textarea_get_text(target), 0, 5000, value);
+        if (!view->_currentInvalid) view->_controller.setPendingCurrent(value);
+    }
+    view->refreshAll(GetHAL()->millis());
 }
 
 void PpsView::onBack(lv_event_t* event)
@@ -277,6 +334,7 @@ void PpsView::onBack(lv_event_t* event)
 void PpsView::onApply(lv_event_t* event)
 {
     auto view = static_cast<PpsView*>(lv_event_get_user_data(event));
+    if (view->_voltageInvalid || view->_currentInvalid) return;
     audio::play_next_tone_progression();
     view->_controller.applySetpoints(GetHAL()->millis());
     view->refreshAll(GetHAL()->millis());
@@ -296,6 +354,10 @@ void PpsView::onOutputSwitch(lv_event_t* event)
         return;
     }
     bool enabled = lv_obj_has_state(view->_outputSwitch, LV_STATE_CHECKED);
+    if (enabled && (view->_voltageInvalid || view->_currentInvalid)) {
+        view->refreshAll(GetHAL()->millis());
+        return;
+    }
     audio::play_next_tone_progression();
     view->_controller.setOutputEnabled(enabled, GetHAL()->millis());
     view->refreshAll(GetHAL()->millis());
@@ -314,7 +376,8 @@ void PpsView::onSliderChanged(lv_event_t* event)
     } else if (target == view->_currentSlider) {
         view->_controller.setPendingCurrent(static_cast<float>(lv_slider_get_value(view->_currentSlider)) / 100.0f);
     }
-    view->refreshPendingLabels();
+    view->syncInputs(true);
+    view->refreshAll(GetHAL()->millis());
 }
 
 void PpsView::onPreset(lv_event_t* event)
@@ -336,5 +399,6 @@ void PpsView::onPreset(lv_event_t* event)
     }
 
     audio::play_next_tone_progression();
+    view->syncInputs(true);
     view->refreshAll(GetHAL()->millis());
 }

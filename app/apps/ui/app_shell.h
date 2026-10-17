@@ -22,6 +22,8 @@ public:
     lv_obj_t* content() const;
     void setTitle(const std::string& title);
     void setStatusChips(const std::vector<std::string>& chips);
+    // Replaces the chips with an action that remains reachable while editing.
+    void setHeaderAction(const std::string& label, std::function<void()> action);
     void setContentScrollable(bool scrollable);
     void bindTextInput(lv_obj_t* field);
     void confirm(std::string title, std::string message, std::function<void()> onConfirm,
@@ -48,6 +50,7 @@ private:
     lv_obj_t* _confirmationMessage = nullptr;
     std::function<void()> _onConfirm;
     std::function<void()> _onCancel;
+    std::function<void()> _headerAction;
 };
 
 }  // namespace app_ui

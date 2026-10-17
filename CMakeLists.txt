@@ -276,6 +276,22 @@ target_include_directories(pps_layout_tests PUBLIC app)
 target_compile_features(pps_layout_tests PUBLIC cxx_std_17)
 add_test(NAME pps_layout_tests COMMAND pps_layout_tests)
 
+add_executable(pps_input_tests tests/test_pps_input.cpp)
+target_include_directories(pps_input_tests PRIVATE app)
+target_compile_features(pps_input_tests PRIVATE cxx_std_17)
+add_test(NAME pps_input_tests COMMAND pps_input_tests)
+
+add_executable(uart_monitor_tests tests/test_uart_monitor.cpp)
+target_include_directories(uart_monitor_tests PRIVATE app)
+target_compile_features(uart_monitor_tests PRIVATE cxx_std_17)
+target_link_libraries(uart_monitor_tests PRIVATE pthread)
+add_test(NAME uart_monitor_tests COMMAND uart_monitor_tests)
+
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME desktop_populated_ui_tests COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_SOURCE_DIR}/tests/run_populated_ui.py $<TARGET_FILE:app_desktop_build>)
+set_tests_properties(desktop_populated_ui_tests PROPERTIES TIMEOUT 70)
+
 add_executable(launcher_layout_tests
     tests/test_launcher_layout.cpp
 )

@@ -273,6 +273,17 @@ static void partial_and_missed_writes_cannot_enable_output()
     assert(fixture.device->value(pps::REG_IOUT_SET) == 2.0f);
 }
 
+static void unchanged_entry_preserves_verified_setpoints()
+{
+    Fixture fixture;
+    fixture.ready();
+    const auto state = fixture.controller->state();
+    fixture.controller->setPendingVoltage(state.pendingVoltage);
+    fixture.controller->setPendingCurrent(state.pendingCurrent);
+    assert(!fixture.controller->state().setpointsDirty);
+    assert(PpsController::canEnable(fixture.controller->state()));
+}
+
 static void concurrent_edits_survive_apply_completion()
 {
     Fixture fixture;
@@ -410,6 +421,7 @@ int main()
     initial_connection_disables_output_and_rejects_wrong_identity();
     failure_preserves_last_good_but_marks_output_unknown_and_reconnects_safely();
     partial_and_missed_writes_cannot_enable_output();
+    unchanged_entry_preserves_verified_setpoints();
     concurrent_edits_survive_apply_completion();
     emergency_off_interrupts_poll_without_waiting_on_caller();
     close_cancels_queued_enable_and_keeps_worker_resources_alive();

@@ -104,7 +104,7 @@ public:
     bool i2cReadRegister(hal::ModuleBus bus, uint8_t address, uint8_t reg, uint8_t* buffer, size_t length) override;
     bool i2cWriteRegister(hal::ModuleBus bus, uint8_t address, uint8_t reg, const uint8_t* data, size_t length) override;
 
-    void uartMonitorSend(std::string msg, bool newLine = true) override;
+    bool uartMonitorSend(std::string msg, bool newLine = true) override;
 
 private:
     std::mutex _powerActionMutex;

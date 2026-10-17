@@ -19,18 +19,23 @@ ComMonitorSample ComMonitorController::drainRx(size_t maxBytes)
         return sample;
     }
     auto& data = _dataFn();
-    std::lock_guard<std::mutex> lock(data.mutex);
-    while (!data.rxQueue.empty() && sample.text.size() < maxBytes) {
-        sample.text.push_back(static_cast<char>(data.rxQueue.front()));
-        data.rxQueue.pop();
+    {
+        std::lock_guard<std::mutex> lock(data.mutex);
+        sample.simulated = data.simulated;
+        sample.error = data.error;
+        sample.dropped = data.rxDropped;
+        while (!data.rxQueue.empty() && sample.text.size() < std::min(maxBytes, hal::UartMonitorState::kCapacity)) {
+            sample.text.push_back(static_cast<char>(data.rxQueue.front()));
+            data.rxQueue.pop();
+        }
     }
     sample.bytesRead = sample.text.size();
+    _logText += sample.text;
+    if (_logText.size() > kLogBytes) _logText.erase(0, _logText.size() - kLogBytes);
     return sample;
 }
 
-void ComMonitorController::sendTestMessage()
+bool ComMonitorController::sendTestMessage()
 {
-    if (_sendFn) {
-        _sendFn("hello from Tab5", true);
-    }
+    return _sendFn && _sendFn("hello from Tab5", true);
 }

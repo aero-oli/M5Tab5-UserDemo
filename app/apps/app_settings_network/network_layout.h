@@ -6,6 +6,7 @@
 #pragma once
 
 #include <apps/ui/ui_layout.h>
+#include <cstddef>
 
 namespace app_settings_network {
 
@@ -56,6 +57,19 @@ inline NetworkLayout makeNetworkLayout()
         {0, 64, 566, 318},
         {324, 42, 156, 26},
     };
+}
+
+inline app_ui::Rect networkRowRect(const NetworkLayout& layout, size_t index)
+{
+    // Keep a gutter for the vertical scrollbar and room for a two-line SSID.
+    return {0, static_cast<int>(index) * 84, layout.networksList.w - 12, 76};
+}
+
+inline int networkRowsHeight(const NetworkLayout& layout, size_t count)
+{
+    if (!count) return 0;
+    const auto last = networkRowRect(layout, count - 1);
+    return last.y + last.h;
 }
 
 }  // namespace app_settings_network

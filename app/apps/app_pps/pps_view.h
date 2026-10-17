@@ -25,6 +25,10 @@ private:
     std::function<void()> _onClose;
     uint32_t _lastUiUpdateMs = 0;
     bool _syncingControls = false;
+    bool _voltageInvalid = false;
+    bool _currentInvalid = false;
+    float _lastInputVoltage = -1;
+    float _lastInputCurrent = -1;
 
     std::unique_ptr<app_ui::AppShell> _shell;
     lv_obj_t* _root = nullptr;
@@ -41,6 +45,8 @@ private:
     lv_obj_t* _lastError = nullptr;
     lv_obj_t* _voltageSlider = nullptr;
     lv_obj_t* _currentSlider = nullptr;
+    lv_obj_t* _voltageInput = nullptr;
+    lv_obj_t* _currentInput = nullptr;
     lv_obj_t* _outputSwitch = nullptr;
     lv_obj_t* _controlsPanel = nullptr;
     lv_obj_t* _applyButton = nullptr;
@@ -52,6 +58,7 @@ private:
 
     void refreshAll(uint32_t nowMs);
     void refreshPendingLabels();
+    void syncInputs(bool resetInvalid = false);
     void createHeader();
     void createTelemetry();
     void createControls();
@@ -63,6 +70,7 @@ private:
     static void onEmergencyOff(lv_event_t* event);
     static void onOutputSwitch(lv_event_t* event);
     static void onSliderChanged(lv_event_t* event);
+    static void onInputChanged(lv_event_t* event);
     static void onPreset(lv_event_t* event);
 };
 

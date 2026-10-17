@@ -147,7 +147,7 @@ static bool desktopLauncherUiLooksReady()
             break;
         }
     }
-    if (topRoot == nullptr || lv_obj_get_child_count(topRoot) < 4) {
+    if (topRoot == nullptr || lv_obj_get_child_count(topRoot) < 3) {
         return false;
     }
 
@@ -498,6 +498,22 @@ static lv_obj_t* desktopFindButton(lv_obj_t* object, const char* label)
     return nullptr;
 }
 
+// Exercise LVGL's pointer target resolution, including clipping and overlapping siblings.
+static void desktopAssertHitTarget(lv_obj_t* target)
+{
+    auto* root = desktopTopFullscreenRoot();
+    lv_obj_update_layout(root);
+    lv_area_t area;
+    lv_obj_get_coords(target, &area);
+    lv_point_t point{(area.x1 + area.x2) / 2, (area.y1 + area.y2) / 2};
+    auto* hit = lv_indev_search_obj(lv_screen_active(), &point);
+    while (hit && hit != target) hit = lv_obj_get_parent(hit);
+    if (!hit) {
+        mclog::tagError(_tag, "desktop pointer target is obscured or clipped");
+        std::abort();
+    }
+}
+
 static void desktopWaitForWifiState(hal::HalBase::WifiConnectionState state, const char* label)
 {
     const uint32_t started = GetHAL()->millis();
@@ -564,7 +580,32 @@ static void desktopAssertNetworkSelection()
                 if (fields.size() != 2) {
                     std::abort();
                 }
+                if (desktopEnvEnabled("M5TAB5_DESKTOP_WIFI_MANY_NETWORKS")) {
+                    auto* last = desktopFindButton(root, "01234567890123456789012345678901");
+                    auto* scan = desktopFindButton(root, "Scan");
+                    auto* connect = desktopFindButton(root, "Connect");
+                    if (!last || !scan || !connect) std::abort();
+                    lv_obj_update_layout(root);
+                    lv_area_t scanBefore, connectBefore, scanAfter, connectAfter;
+                    lv_obj_get_coords(scan, &scanBefore);
+                    lv_obj_get_coords(connect, &connectBefore);
+                    lv_obj_scroll_to_view(last, LV_ANIM_OFF);
+                    lv_obj_update_layout(root);
+                    lv_obj_get_coords(scan, &scanAfter);
+                    lv_obj_get_coords(connect, &connectAfter);
+                    if (scanBefore.y1 != scanAfter.y1 || connectBefore.y1 != connectAfter.y1) std::abort();
+                    desktopAssertHitTarget(last);
+                    desktopAssertHitTarget(scan);
+                    desktopAssertHitTarget(connect);
+                    lv_textarea_set_text(fields[1], "old-password");
+                    lv_obj_send_event(last, LV_EVENT_CLICKED, nullptr);
+                    if (std::string(lv_textarea_get_text(fields[0])) != "01234567890123456789012345678901" ||
+                        lv_textarea_get_text(fields[1])[0] != '\0') std::abort();
+                    desktopSaveUiCapture("Network-populated-last");
+                    lv_obj_scroll_to_view(workshop, LV_ANIM_OFF);
+                }
                 lv_textarea_set_text(fields[1], "previous-password");
+                desktopAssertHitTarget(workshop);
                 lv_obj_send_event(workshop, LV_EVENT_CLICKED, nullptr);
                 if (std::string(lv_textarea_get_text(fields[0])) != "Workshop" ||
                     lv_textarea_get_text(fields[1])[0] != '\0') {
@@ -956,6 +997,12 @@ static void desktopSetPpsOutput(bool enabled)
     lv_obj_send_event(toggle, LV_EVENT_VALUE_CHANGED, nullptr);
 }
 
+[[noreturn]] static void desktopPpsFailure(int line)
+{
+    mclog::tagError(_tag, "PPS workflow failed at source line {}", line);
+    std::abort();
+}
+
 static void desktopAssertPpsWorkflow()
 {
     if (desktopEnvEnabled("M5TAB5_DESKTOP_PPS_ABSENT")) {
@@ -967,7 +1014,7 @@ static void desktopAssertPpsWorkflow()
             !lv_obj_has_state(desktopFindButton(root, "Apply"), LV_STATE_DISABLED) ||
             !lv_obj_has_state(desktopFindSwitch(root), LV_STATE_DISABLED) ||
             lv_obj_has_state(desktopFindButton(root, "Emergency Off"), LV_STATE_DISABLED)) {
-            std::abort();
+            desktopPpsFailure(__LINE__);
         }
         desktopSaveUiCapture("PPS-absent");
         return;
@@ -976,15 +1023,29 @@ static void desktopAssertPpsWorkflow()
     {
         LvglLockGuard lock;
         auto* root = desktopTopFullscreenRoot();
-        if (!desktopHasLabel(root, "0.000 A") || !desktopHasLabel(root, "Set V: 5.0 V")) {
+        if (!desktopHasLabel(root, "0.000 A") || !desktopHasLabel(root, "Set V: 5.000 V")) {
             mclog::tagError(_tag, "desktop PPS initial telemetry not ready");
-            std::abort();
+            desktopPpsFailure(__LINE__);
         }
         lv_obj_send_event(desktopFindButton(root, "12V"), LV_EVENT_CLICKED, nullptr);
         if (!lv_obj_has_state(desktopFindSwitch(root), LV_STATE_DISABLED)) {
             mclog::tagError(_tag, "desktop PPS preset must lock Enable until Apply");
-            std::abort();
+            desktopPpsFailure(__LINE__);
         }
+        std::vector<lv_obj_t*> fields;
+        desktopCollectTextFields(root, fields);
+        if (fields.size() != 2) desktopPpsFailure(__LINE__);
+        lv_textarea_set_text(fields[0], "30.001");
+        if (!lv_obj_has_state(desktopFindButton(root, "Apply"), LV_STATE_DISABLED) ||
+            !lv_obj_has_state(desktopFindSwitch(root), LV_STATE_DISABLED)) desktopPpsFailure(__LINE__);
+        lv_obj_send_event(fields[0], LV_EVENT_CLICKED, nullptr);
+        auto* keyboard = desktopFindKeyboard(root);
+        if (!keyboard) desktopPpsFailure(__LINE__);
+        lv_textarea_set_text(lv_keyboard_get_textarea(keyboard), "12.345");
+        desktopPressKeyboardKey(keyboard, LV_SYMBOL_OK);
+        lv_textarea_set_text(fields[1], "2.123");
+        if (!desktopHasLabel(root, "Set V: 12.345 V") || !desktopHasLabel(root, "Set A: 2.123 A")) desktopPpsFailure(__LINE__);
+        desktopSaveUiCapture("PPS-exact-entry");
         lv_obj_send_event(desktopFindButton(root, "Apply"), LV_EVENT_CLICKED, nullptr);
     }
     const auto started = GetHAL()->millis();
@@ -995,24 +1056,27 @@ static void desktopAssertPpsWorkflow()
             LvglLockGuard lock;
             auto* root = desktopTopFullscreenRoot();
             applied = !lv_obj_has_state(desktopFindSwitch(root), LV_STATE_DISABLED) &&
-                      desktopHasLabel(root, "Set V: 12.0 V");
+                      desktopHasLabel(root, "Set V: 12.345 V");
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     if (!applied) {
         mclog::tagError(_tag, "desktop PPS Apply did not finish");
-        std::abort();
+        desktopPpsFailure(__LINE__);
     }
     uint8_t voltageBytes[4];
     float voltage = 0;
     if (!GetHAL()->i2cReadRegister(hal::ModuleBus::MBus, 0x35, 0x18, voltageBytes, sizeof(voltageBytes))) {
-        std::abort();
+        desktopPpsFailure(__LINE__);
     }
     std::memcpy(&voltage, voltageBytes, sizeof(voltage));
-    if (voltage != 12.0f) {
+    if (voltage != 12.345f) {
         mclog::tagError(_tag, "desktop PPS setpoint readback mismatch");
-        std::abort();
+        desktopPpsFailure(__LINE__);
     }
+    if (!GetHAL()->i2cReadRegister(hal::ModuleBus::MBus, 0x35, 0x1C, voltageBytes, sizeof(voltageBytes))) desktopPpsFailure(__LINE__);
+    std::memcpy(&voltage, voltageBytes, sizeof(voltage));
+    if (voltage != 2.123f) desktopPpsFailure(__LINE__);
     desktopSetPpsOutput(true);
     desktopWaitForPpsLabel("Output On");
     {
@@ -1020,14 +1084,23 @@ static void desktopAssertPpsWorkflow()
         auto* root = desktopTopFullscreenRoot();
         if (!lv_obj_has_state(desktopFindButton(root, "Apply"), LV_STATE_DISABLED)) {
             mclog::tagError(_tag, "desktop PPS Apply must be locked while output is on");
-            std::abort();
+            desktopPpsFailure(__LINE__);
         }
         desktopSaveUiCapture("PPS-running");
-        lv_obj_send_event(desktopFindButton(root, "Emergency Off"), LV_EVENT_CLICKED, nullptr);
+        std::vector<lv_obj_t*> fields;
+        desktopCollectTextFields(root, fields);
+        lv_obj_send_event(fields[0], LV_EVENT_CLICKED, nullptr);
+        if (!desktopFindKeyboard(root)) desktopPpsFailure(__LINE__);
+        auto* off = desktopFindButton(root, "Emergency Off");
+        if (!off || lv_obj_has_state(off, LV_STATE_DISABLED)) desktopPpsFailure(__LINE__);
+        desktopSaveUiCapture("PPS-editor-output-on");
+        desktopAssertHitTarget(off);
+        lv_obj_send_event(off, LV_EVENT_CLICKED, nullptr);
+        if (desktopFindKeyboard(root)) desktopPpsFailure(__LINE__);
     }
     desktopWaitForPpsLabel("Output Off confirmed");
     if (!desktopValidateNonScrollableBounds("PPS workflow")) {
-        std::abort();
+        desktopPpsFailure(__LINE__);
     }
     // Leave output on so Back exercises asynchronous output-off, not merely object deletion.
     desktopSetPpsOutput(true);
@@ -1278,6 +1351,89 @@ static void desktopAssertGpioWorkflow(int appId)
     }
 }
 
+static lv_obj_t* desktopFindLabelContaining(lv_obj_t* object, const char* text)
+{
+    if (lv_obj_has_flag(object, LV_OBJ_FLAG_HIDDEN)) return nullptr;
+    if (lv_obj_check_type(object, &lv_label_class) &&
+        std::string(lv_label_get_text(object)).find(text) != std::string::npos) return object;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(object); ++i)
+        if (auto* label = desktopFindLabelContaining(lv_obj_get_child(object, i), text)) return label;
+    return nullptr;
+}
+
+static void desktopAssertScrollableText(lv_obj_t* label, const char* action, const char* capture)
+{
+    auto* root = desktopTopFullscreenRoot();
+    auto* viewport = lv_obj_get_parent(label);
+    auto* button = desktopFindButton(root, action);
+    auto* back = desktopFindButton(root, "Back");
+    lv_obj_update_layout(root);
+    if (!lv_obj_has_flag(viewport, LV_OBJ_FLAG_SCROLLABLE)) std::abort();
+    lv_obj_scroll_to_y(viewport, 0, LV_ANIM_OFF);
+    lv_obj_update_layout(root);
+    const auto bottom = lv_obj_get_scroll_bottom(viewport);
+    if (bottom <= 0) std::abort();
+    lv_area_t before, after;
+    lv_obj_get_coords(button, &before);
+    lv_obj_scroll_to_y(viewport, bottom, LV_ANIM_OFF);
+    lv_obj_update_layout(root);
+    lv_obj_get_coords(button, &after);
+    if (before.y1 != after.y1 || lv_obj_get_scroll_bottom(viewport) > 1) std::abort();
+    desktopAssertHitTarget(button);
+    desktopAssertHitTarget(back);
+    desktopSaveUiCapture(capture);
+}
+
+static void desktopAssertPopulatedTools(app_registry::AppKey key, int appId)
+{
+    if (key != app_registry::AppKey::SdCard && key != app_registry::AppKey::ComMonitor) return;
+    const bool sd = key == app_registry::AppKey::SdCard;
+    if (sd && !desktopEnvEnabled("M5TAB5_DESKTOP_SD_ROOT")) return;
+    {
+        LvglLockGuard lock;
+        if (sd) {
+            auto* scan = desktopFindButton(desktopTopFullscreenRoot(), "Scan SD Card");
+            lv_obj_send_event(scan, LV_EVENT_CLICKED, nullptr);
+            if (!lv_obj_has_state(scan, LV_STATE_DISABLED)) std::abort();
+        } else {
+            std::string log;
+            for (int i = 0; i < 80; ++i) log += "serial row " + std::to_string(i) + " populated data\n";
+            log += "SERIAL-END-MARKER\n";
+            if (!GetHAL()->uartMonitorSend(log, false)) std::abort();
+        }
+    }
+    const char* marker = sd ? "Showing first 256 entries" : "SERIAL-END-MARKER";
+    bool found = false;
+    const auto started = GetHAL()->millis();
+    while (GetHAL()->millis() - started < 4000) {
+        desktopPumpLifecycle();
+        {
+            LvglLockGuard lock;
+            auto* root = desktopTopFullscreenRoot();
+            auto* label = desktopFindLabelContaining(root, marker);
+            if (label) {
+                if (!sd && std::strlen(lv_label_get_text(label)) > 2000) std::abort();
+                desktopAssertScrollableText(label, sd ? "Scan SD Card" : "Send Test Message",
+                                            sd ? "SD-populated-bottom" : "COM-populated-bottom");
+                found = true;
+                break;
+            }
+        }
+        SDL_Delay(5);
+    }
+    if (!found) { mclog::tagError(_tag, "populated tool did not reach {}", marker); std::abort(); }
+    if (!sd) {
+        { LvglLockGuard lock; lv_obj_send_event(desktopFindButton(desktopTopFullscreenRoot(), "Back"), LV_EVENT_CLICKED, nullptr); }
+        desktopPumpLifecycle();
+        if (!app_registry::registry().open(key)) std::abort();
+        desktopPumpLifecycle();
+        LvglLockGuard lock;
+        if (GetMooncake().getAppCurrentState(appId) != AppAbility::StateRunning ||
+            !desktopHasLabelContaining(desktopTopFullscreenRoot(), marker)) std::abort();
+        desktopSaveUiCapture("COM-reopened");
+    }
+}
+
 static void desktopAssertAllRegisteredAppsUi()
 {
     if (!_desktopAssertAllAppsUi || _desktopAllAppsUiAsserted) {
@@ -1353,6 +1509,7 @@ static void desktopAssertAllRegisteredAppsUi()
         if (registeredApp.key == app_registry::AppKey::SettingsPower) {
             desktopAssertPowerWorkflow(registeredApp.appId);
         }
+        desktopAssertPopulatedTools(registeredApp.key, registeredApp.appId);
         desktopAssertTouchTextEditing(registeredApp.label.c_str());
 
         {
@@ -1406,7 +1563,7 @@ static void desktopAssertAllRegisteredAppsUi()
             {
                 LvglLockGuard lock;
                 auto* root = desktopTopFullscreenRoot();
-                if (!desktopHasLabel(root, "Set V: 12.0 V")) {
+                if (!desktopHasLabel(root, "Set V: 12.345 V")) {
                     mclog::tagError(_tag, "desktop PPS reopening must reflect verified hardware setpoints");
                     std::abort();
                 }
@@ -1585,6 +1742,10 @@ void app::Destroy()
     app_settings_power::PowerSettingsController::shutdown();
     if (!GetHAL()->stopNetworkAndWait(15000)) {
         mclog::tagError(_tag, "Network shutdown timed out: refusing to destroy active update resources");
+        std::abort();
+    }
+    if (!GetHAL()->stopUartAndWait(2000)) {
+        mclog::tagError(_tag, "UART shutdown timed out: refusing to destroy active serial resources");
         std::abort();
     }
     if (!app_runtime::AsyncJobRunner::shutdownAll(30000)) {

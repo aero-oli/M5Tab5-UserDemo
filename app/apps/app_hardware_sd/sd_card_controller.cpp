@@ -16,11 +16,14 @@ SdCardController::SdCardController(ScanFn scanFn)
 
 bool SdCardController::startScan()
 {
-    if (!_scanFn) {
+    {
         std::lock_guard<std::mutex> lock(_mutex);
-        _statusText = "SD card scan is unavailable.";
-        _busy = false;
-        return false;
+        if (_busy) return false;
+        if (!_scanFn) {
+            _statusText = "SD card scan is unavailable.";
+            return false;
+        }
+        _busy = true; // Reserve locally before another caller can submit a scan.
     }
 
     auto state = std::make_shared<ScanState>();
@@ -67,9 +70,11 @@ void SdCardController::refresh()
     }
 
     std::lock_guard<std::mutex> lock(_mutex);
-    _statusText = std::move(text);
-    _busy = false;
-    _scanState.reset();
+    if (_scanState == state) {
+        _statusText = std::move(text);
+        _busy = false;
+        _scanState.reset();
+    }
 }
 
 bool SdCardController::busy() const

@@ -133,6 +133,7 @@ private:
     lv_obj_t* _password = nullptr;
     lv_obj_t* _extAntennaSwitch = nullptr;
     lv_obj_t* _networkList = nullptr;
+    lv_obj_t* _networkSummary = nullptr;
     lv_obj_t* _emptyNetworks = nullptr;
     lv_obj_t* _apStatus = nullptr;
 
@@ -194,12 +195,17 @@ private:
                                            layout.networksPanel.w, layout.networksPanel.h);
         app_ui::makeLabel(networks, "Nearby Networks", 0, 4, &lv_font_montserrat_20,
                           app_ui::theme::color(app_ui::theme::text));
+        _networkSummary = app_ui::makeFittedLabel(networks, "Scan to find networks", 0, 36, 380, 20,
+            &lv_font_montserrat_14, app_ui::theme::color(app_ui::theme::muted), LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_LEFT);
         const auto& list = layout.networksList;
         _networkList = app_ui::makePanel(networks, list.x, list.y, list.w, list.h);
         lv_obj_set_style_pad_all(_networkList, 0, 0);
         lv_obj_set_style_border_width(_networkList, 0, 0);
         lv_obj_set_style_bg_opa(_networkList, LV_OPA_TRANSP, 0);
         lv_obj_add_flag(_networkList, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_remove_flag(_networkList, LV_OBJ_FLAG_SCROLL_CHAIN);
+        lv_obj_remove_flag(_networkList, LV_OBJ_FLAG_SCROLL_ELASTIC);
+        lv_obj_remove_flag(_networkList, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
         lv_obj_set_scroll_dir(_networkList, LV_DIR_VER);
         lv_obj_set_scrollbar_mode(_networkList, LV_SCROLLBAR_MODE_AUTO);
         bindButton("Scan", layout.scanButton.x, layout.scanButton.y, layout.scanButton.w, layout.scanButton.h, app_ui::ButtonKind::Secondary, ActionId::ScanWifi);
@@ -339,6 +345,11 @@ private:
 
     void renderNetworks(const NetworkSnapshot& snapshot)
     {
+        const auto layout = makeNetworkLayout();
+        const bool scrollable = networkRowsHeight(layout, snapshot.networks.size()) > layout.networksList.h;
+        if (_scanPending) lv_label_set_text(_networkSummary, "Scanning...");
+        else lv_label_set_text_fmt(_networkSummary, "%u networks%s",
+            static_cast<unsigned>(snapshot.networks.size()), scrollable ? " | Scroll to see all" : "");
         const bool changed = !_networksRendered || snapshot.networks.size() != _displayedNetworks.size() ||
             !std::equal(snapshot.networks.begin(), snapshot.networks.end(), _displayedNetworks.begin(),
                         [](const auto& a, const auto& b) {
@@ -346,6 +357,7 @@ private:
                         });
         if (changed) {
             lv_obj_clean(_networkList);
+            lv_obj_scroll_to_y(_networkList, 0, LV_ANIM_OFF);
             _networkRows.clear();
             _emptyNetworks = nullptr;
             _displayedNetworks = snapshot.networks;
@@ -355,26 +367,27 @@ private:
                     &lv_font_montserrat_18, app_ui::theme::color(app_ui::theme::muted),
                     LV_LABEL_LONG_WRAP, LV_TEXT_ALIGN_LEFT);
             }
-            int index = 0;
+            size_t index = 0;
             for (const auto& network : _displayedNetworks) {
                 auto binding = std::make_unique<NetworkBinding>();
                 binding->app = this;
                 binding->ssid = network.ssid;
-                auto* row = app_ui::makeButtonSurface(_networkList, 0, index++ * 68, 554, 60,
+                const auto rowRect = networkRowRect(layout, index++);
+                auto* row = app_ui::makeButtonSurface(_networkList, rowRect.x, rowRect.y, rowRect.w, rowRect.h,
                     app_ui::theme::color(app_ui::theme::panelAlt), app_ui::theme::color(app_ui::theme::border), 1, 8);
                 binding->button = row;
                 lv_obj_set_style_bg_color(row, app_ui::theme::color(app_ui::theme::blue), LV_STATE_CHECKED);
                 app_ui::makeFittedLabel(row, network.ssid.empty() ? "Hidden network" : network.ssid.c_str(),
-                    16, 5, 390, 24, &lv_font_montserrat_18, app_ui::theme::color(app_ui::theme::text),
-                    LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_LEFT);
+                    16, 5, 390, 40, &lv_font_montserrat_16, app_ui::theme::color(app_ui::theme::text),
+                    LV_LABEL_LONG_WRAP, LV_TEXT_ALIGN_LEFT);
                 char security[64];
                 std::snprintf(security, sizeof(security), "%s | Channel %u", network.secure ? "Secured" : "Open",
                               static_cast<unsigned>(network.channel));
-                app_ui::makeFittedLabel(row, security, 16, 32, 390, 20, &lv_font_montserrat_14,
+                app_ui::makeFittedLabel(row, security, 16, 50, 390, 20, &lv_font_montserrat_14,
                     app_ui::theme::color(app_ui::theme::muted), LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_LEFT);
                 char signal[24];
                 std::snprintf(signal, sizeof(signal), "%d dBm", network.rssi);
-                app_ui::makeFittedLabel(row, signal, 420, 18, 118, 24, &lv_font_montserrat_16,
+                app_ui::makeFittedLabel(row, signal, 420, 26, 118, 24, &lv_font_montserrat_16,
                     app_ui::theme::color(app_ui::theme::text), LV_LABEL_LONG_DOT, LV_TEXT_ALIGN_RIGHT);
                 lv_obj_add_event_cb(row, [](lv_event_t* event) {
                     auto* binding = static_cast<NetworkBinding*>(lv_event_get_user_data(event));

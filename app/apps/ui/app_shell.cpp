@@ -106,6 +106,21 @@ void AppShell::setStatusChips(const std::vector<std::string>& chips)
     }
 }
 
+void AppShell::setHeaderAction(const std::string& label, std::function<void()> action)
+{
+    _headerAction = std::move(action);
+    lv_obj_clean(_chipArea);
+    const auto layout = makeAppShellLayout();
+    auto* button = makeButton(_chipArea, label.c_str(), 0, 0, layout.chipArea.w,
+                              layout.chipArea.h, ButtonKind::Danger);
+    lv_obj_add_event_cb(button, [](lv_event_t* event) {
+        auto* shell = static_cast<AppShell*>(lv_event_get_user_data(event));
+        if (shell->_editedField != nullptr) shell->closeTextEditor(false);
+        shell->dismissConfirmation();
+        if (shell->_headerAction) shell->_headerAction();
+    }, LV_EVENT_CLICKED, this);
+}
+
 void AppShell::setContentScrollable(bool scrollable)
 {
     if (_content == nullptr) {

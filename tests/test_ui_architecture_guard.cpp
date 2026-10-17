@@ -165,11 +165,11 @@ int main()
         failures.push_back("LauncherView::renderTiles() must use shared UI primitives for tile internals");
     }
 
-    const auto renderSummary = functionBodyFrom(launcherSource, "void LauncherView::renderSummary()");
+    const auto renderSummary = functionBodyFrom(launcherSource, "void LauncherView::refreshStatus()");
     if (renderSummary.empty()) {
-        failures.push_back("LauncherView::renderSummary() was not found");
+        failures.push_back("LauncherView::refreshStatus() was not found");
     } else if (contains(renderSummary, "lv_obj_clean(")) {
-        failures.push_back("LauncherView::renderSummary() must update labels in place, not rebuild objects");
+        failures.push_back("LauncherView::refreshStatus() must update labels in place, not rebuild objects");
     }
 
     const auto selectCategory = functionBodyFrom(launcherSource, "void LauncherView::selectCategory(AppCategory category)");

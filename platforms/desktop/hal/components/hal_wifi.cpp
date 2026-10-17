@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <cstdio>
 #include <thread>
 #include <cstdlib>
 
@@ -111,7 +112,17 @@ std::vector<hal::HalBase::WifiNetwork> HalDesktop::wifiScan()
     pauseMs(100);
     state.finishScan(generation, true);
     if (env("M5TAB5_DESKTOP_WIFI_NO_NETWORKS")) return {};
-    return {{"Workshop", -42, true, 6}, {"M5Lab", -58, true, 11}, {"Guest", -76, false, 1}};
+    std::vector<WifiNetwork> networks {{"Workshop", -42, true, 6}, {"M5Lab", -58, true, 11}, {"Guest", -76, false, 1}};
+    if (env("M5TAB5_DESKTOP_WIFI_MANY_NETWORKS")) {
+        for (int index = 4; index <= 42; ++index) {
+            char name[32];
+            std::snprintf(name, sizeof(name), "Office Network %02d", index);
+            networks.push_back({index == 20 ? std::string(32, 'W') : name, -30 - index, index % 3 != 0,
+                                static_cast<uint8_t>(index % 11 + 1)});
+        }
+        networks.push_back({"01234567890123456789012345678901", -80, true, 11});
+    }
+    return networks;
 }
 bool HalDesktop::wifiConnect(const std::string& ssid, const std::string& password)
 {

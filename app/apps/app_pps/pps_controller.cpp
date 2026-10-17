@@ -376,6 +376,7 @@ void PpsController::setPendingVoltage(float voltage)
         mclog::tagWarn("pps-controller", "voltage clamped to PPS limits");
     }
     std::lock_guard<std::mutex> lock(_worker->mutex);
+    if (_worker->state.pendingVoltage == pps::PpsDevice::clampVoltage(voltage)) return;
     _worker->state.pendingVoltage = pps::PpsDevice::clampVoltage(voltage);
     _worker->state.setpointsDirty = true;
     ++_worker->revision;
@@ -393,6 +394,7 @@ void PpsController::setPendingCurrent(float current)
         mclog::tagWarn("pps-controller", "current clamped to PPS limits");
     }
     std::lock_guard<std::mutex> lock(_worker->mutex);
+    if (_worker->state.pendingCurrent == pps::PpsDevice::clampCurrent(current)) return;
     _worker->state.pendingCurrent = pps::PpsDevice::clampCurrent(current);
     _worker->state.setpointsDirty = true;
     ++_worker->revision;
