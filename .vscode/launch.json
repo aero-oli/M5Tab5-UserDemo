@@ -5,7 +5,7 @@
       "name": "Debug desktop demo",
       "type": "lldb",
       "request": "launch",
-      "program": "${workspaceFolder}/build/desktop/app_desktop_build",
+      "program": "${workspaceFolder}/build/vscode-desktop/app_desktop_build",
       "cwd": "${workspaceFolder}",
       "preLaunchTask": "Desktop: build",
       "args": []

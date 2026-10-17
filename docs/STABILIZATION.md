@@ -34,7 +34,7 @@ Do not describe a desktop simulator pass as electrical, DMA, wake, radio or OTA 
 | 4 | Truthful RTC/SD/sensor results, restore RTC setting, fresh Home status | Software gate passed: 65/65 desktop tests; RTC fault journeys; Tab5 build |
 | 5 | Wi-Fi restoration/recovery; verified HTTPS OTA, progress, cancellation, confirmation and recovery | Software gate passed: 72/72 desktop tests; OTA fault/cancel journeys; Tab5 build |
 | 6 | Focused Home, exact PPS entry, populated logs/files/networks, keyboard/error/busy journeys | Software gate passed: 75 desktop checks (guard rename rerun); populated render/pointer journeys; Tab5 build |
-| 7 | Build/test CI, separate smoke harness, extension contracts, device acceptance and release procedure | Pending |
+| 7 | Build/test CI, separate smoke harness, extension contracts, device acceptance and release procedure | Software gate passed: fresh build, 76/76 tests, no-op rebuild, Tab5 build; hosted CI/device gates pending |
 
 Feature parity checklist: launcher/categories; Network scan/select/connect/disconnect/forget/AP;
 Updates install/cancel/reboot; brightness/volume; screen/motion/timed sleep/power-off;
@@ -45,6 +45,7 @@ identity/readout/setpoints/presets/enable/priority off/communication-loss recove
 ## Reproduce software validation
 
 ```sh
+python3 fetch_repos.py --verify
 cmake --preset desktop
 cmake --build --preset desktop -j 8
 ctest --preset desktop --output-on-failure
@@ -181,3 +182,31 @@ result. COM retains 2,000 displayed bytes and follows the tail only when already
 queues are bounded, driver operations run outside the UI queue mutex, and shutdown waits for driver cleanup. The
 single worker owns UART SDK calls, including the SDK's internal TX mutex. Desktop echo creates no detached thread.
 Network lists retain selection/scroll position during status refresh and support full 32-byte SSIDs in bounded rows.
+
+## Milestone 7 reproducibility and handoff
+
+Verified 2026-10-17: a fresh Ninja desktop build in `build/stabilization-clean`, 76/76 project CTest
+checks, and a subsequent unchanged build reporting `ninja: no work to do`. The standard desktop
+preset was also built. The firmware size check reports 15% free in the 4 MiB app slot and 5% free
+in the configured bootloader region; future changes must keep both size checks passing. ESP-IDF v5.4.2 compiled the final app, bootloader and partition artifacts.
+Eleven temporary-Git fetch cases run inside `fetch_repos_tests`; existing dependency pins verified
+without network access. Workflow YAML and JSON configuration syntax were checked. The hosted
+workflow has not been dispatched, and Linux/container execution remains a CI gate.
+
+Desktop CMake no longer overwrites `CMAKE_BINARY_DIR`; binaries belong to the selected build tree.
+VS Code run/debug uses `build/vscode-desktop/app_desktop_build`. Unused dependency demos/examples
+and internal ThorVG are excluded from desktop builds. The old VS Code build cache repeatedly reported a truncated Ninja dependency log. It was preserved
+as `build/vscode-desktop-before-stabilization-20261017` before recreating the standard preset build
+directory. The recreated standard preset passed its no-op rebuild and full-app smoke journey too.
+The cause was not conclusively explained; neither fresh build reproduced the damaged-log behavior. CI checks for unexpected compilation or damaged dependency logs on an
+immediate rebuild.
+
+The desktop journey harness is separate from runtime initialization, dispatch and shutdown. Independent review
+compared its extracted functions and confirmed that the only intended dispatch change is the
+injected pump of the runtime's existing LVGL timer. Runtime shutdown ownership remains unchanged.
+
+New development should follow [the extension contract](EXTENDING.md). Use [the release checklist](RELEASE_CHECKLIST.md)
+to record the actual board, recovery backup, partition/bootloader identity, controlled electrical
+checks, radio/OTA interruption and rollback, wake behavior, visible latency and soak measurements.
+Those device gates remain pending because no hardware is connected. No firmware has been flashed,
+no remote CI run has been claimed, and no changes have been pushed during stabilization.

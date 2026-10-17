@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.25)
 project(MC_APP_BOILERPLATE VERSION 0.1.0 LANGUAGES C CXX)
 
 include(platforms/desktop/CMakeLists.txt)
@@ -505,3 +505,8 @@ add_test(NAME desktop_hardware_read_failure_ui_tests
     M5TAB5_DESKTOP_ASSERT_ALL_APPS_UI=1 M5TAB5_DESKTOP_RTC_FAIL=1 M5TAB5_DESKTOP_INTERFACE_FAIL=1
     $<TARGET_FILE:app_desktop_build>)
 set_tests_properties(desktop_hardware_read_failure_ui_tests PROPERTIES TIMEOUT 30)
+
+# Dependency-fetch regressions use only temporary local Git repositories.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME fetch_repos_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_fetch_repos.py)
+set_tests_properties(fetch_repos_tests PROPERTIES TIMEOUT 30)

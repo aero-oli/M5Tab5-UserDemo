@@ -2,61 +2,52 @@
 
 User demo source code of [M5Tab5](https://docs.m5stack.com/en/products/sku/k145).
 
-## Build
+## Build and verify
 
-### Fetch Dependencies
+Use Python 3, Git, CMake 3.25 or newer, Ninja, a C++17 compiler and SDL2 development files.
+On Ubuntu, the desktop packages are `build-essential cmake ninja-build libsdl2-dev python3`.
+On macOS, install CMake, Ninja and SDL2 with your preferred package manager.
 
-```bash
-python ./fetch_repos.py
+From the repository root:
+
+```sh
+python3 fetch_repos.py
+python3 fetch_repos.py --verify
+cmake --preset desktop
+cmake --build --preset desktop -j 8
+ctest --preset desktop --output-on-failure
+./build/vscode-desktop/app_desktop_build
 ```
 
-## Desktop Build
+Dependencies are pinned to exact commits in `repos.json`. Fetching reuses matching clean checkouts
+and refuses to overwrite local edits or unexpected revisions. `--verify` checks without network access.
+Build outputs stay in the selected CMake build directory; old `build/desktop` binaries are not updated.
+The VS Code desktop tasks and debugger use the preset output shown above.
 
-#### Tool Chains
+For firmware, use [ESP-IDF v5.4.2](https://docs.espressif.com/projects/esp-idf/en/v5.4.2/esp32p4/index.html)
+and source that installation's `export.sh`, then run:
 
-```bash
-sudo apt install build-essential cmake libsdl2-dev
+```sh
+idf.py -C platforms/tab5 build
 ```
 
-#### Build
+The build does not flash hardware. Initial provisioning, partition/bootloader compatibility and device
+acceptance are covered in [the release checklist](docs/RELEASE_CHECKLIST.md). The current stabilization
+has software evidence only; physical verification is still pending. See [milestones and evidence](docs/STABILIZATION.md).
 
-```bash
-mkdir build && cd build
-```
+The hosted workflow builds/tests desktop and builds firmware. It does not deploy. Desktop UI journeys
+use the dummy SDL driver and simulated peripherals; enable captures with an existing directory in
+`M5TAB5_DESKTOP_UI_CAPTURE_DIR`. For the populated SD/network/COM journey:
 
-```bash
-cmake .. && make -j8
-```
-
-#### Run
-
-```bash
-./desktop/app_desktop_build
-```
-
-## IDF Build
-
-#### Tool Chains
-
-[ESP-IDF v5.4.2](https://docs.espressif.com/projects/esp-idf/en/v5.4.2/esp32s3/index.html)
-
-#### Build
-
-```bash
-cd platforms/tab5
-```
-
-```bash
-idf.py build
-```
-
-#### Flash
-
-```bash
-idf.py flash
+```sh
+mkdir -p /tmp/tab5-captures
+M5TAB5_DESKTOP_UI_CAPTURE_DIR=/tmp/tab5-captures \
+  python3 tests/run_populated_ui.py build/vscode-desktop/app_desktop_build
 ```
 
 ## App Architecture
+
+The execution, resource ownership and validation contract is documented in [EXTENDING.md](docs/EXTENDING.md).
 
 The UI is registry-driven. New features should be added as standalone Mooncake apps and registered in
 `app/apps/app_catalog.cpp` with an `AppKey`, category, label, icon, summary priority, and status provider.

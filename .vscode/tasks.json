@@ -124,7 +124,7 @@
     {
       "label": "Desktop: run",
       "type": "shell",
-      "command": "./build/desktop/app_desktop_build",
+      "command": "./build/vscode-desktop/app_desktop_build",
       "options": {
         "cwd": "${workspaceFolder}",
         "shell": {

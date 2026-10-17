@@ -204,7 +204,7 @@ int main()
         }
     }
 
-    const auto appRuntimeSource = readFile(repoRoot / "app" / "app.cpp");
+    const auto appRuntimeSource = readFile(repoRoot / "platforms" / "desktop" / "test_support" / "ui_smoke.cpp");
     if (!contains(appRuntimeSource, "desktopValidateNonScrollableBounds(")) {
         failures.push_back("desktop runtime smoke must validate non-scrollable LVGL object bounds");
     }
