@@ -1,109 +1,97 @@
-/*
- * SPDX-FileCopyrightText: 2025 M5Stack Technology CO LTD
- *
- * SPDX-License-Identifier: MIT
- */
+/* SPDX-License-Identifier: MIT */
 #include "hal/hal_esp32.h"
-#include <mooncake_log.h>
-#include <vector>
-#include <driver/gpio.h>
-#include <memory>
-#include "driver/uart.h"
-#include "esp_log.h"
+#include <hal/uart_monitor.h>
+#include <driver/uart.h>
+#include <esp_log.h>
+#include <new>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
-#define TAG "hal_rs485"
+namespace {
+constexpr uart_port_t port = UART_NUM_1;
+constexpr int txPin = 20, rxPin = 21, dePin = 34;
+using State = hal::UartMonitorState;
 
-// RS485
-#define TAB5_RS485_BUF_SIZE (127)
-// Timeout threshold for UART = number of symbols (~10 tics) with unchanged state on receive pin
-#define TAB5_RS485_READ_TOUT        (3)  // 3.5T * 8 = 28 ticks, TOUT=3 -> ~24..33 ticks
-#define TAB5_RS485_PACKET_READ_TICS (100 / portTICK_PERIOD_MS)
-static uart_port_t tab5_rs485_uart_num = UART_NUM_1;
-
-#define TAB5_SYS_RS485_TX_PIN 20
-#define TAB5_SYS_RS485_RX_PIN 21
-#define TAB5_SYS_RS485_DE_PIN 34
-
-static void tab5_rs485_echo_send(const int port, uint8_t* str, uint8_t length)
+void uartWorker(void* arg)
 {
-    if (uart_write_bytes((uart_port_t)port, str, length) != length) {
-        ESP_LOGE(TAG, "Send data critical failure.");
-        // add your code to handle sending failure here
-        abort();
-    }
-}
-
-static void _rs485_test_task(void* param)
-{
-    // Allocate buffers for UART
-    uint8_t* data  = (uint8_t*)malloc(TAB5_RS485_BUF_SIZE);
-    uint8_t* wdata = (uint8_t*)malloc(TAB5_RS485_BUF_SIZE);
-
-    int count               = 0;
-    uint64_t last_send_time = 0;
-    while (1) {
-        // Read data from UART
-        memset(data, 0, TAB5_RS485_BUF_SIZE);
-        int len = uart_read_bytes(tab5_rs485_uart_num, data, TAB5_RS485_BUF_SIZE, TAB5_RS485_PACKET_READ_TICS);
-
-        // Write data back to UART
-        if (len > 0) {
-            // printf("Received [%u] : %s\n", len, data);
-            // tab5_rs485_echo_send(tab5_rs485_uart_num, data, len);
-
-            std::lock_guard<std::mutex> lock(GetHAL()->uartMonitorData.mutex);
-            for (int i = 0; i < len; i++) {
-                GetHAL()->uartMonitorData.rxQueue.push(data[i]);
-            }
-            while (GetHAL()->uartMonitorData.rxQueue.size() > 4096) {
-                GetHAL()->uartMonitorData.rxQueue.pop();
-            }
+    {
+        auto state = std::move(*static_cast<std::shared_ptr<State>*>(arg));
+        delete static_cast<std::shared_ptr<State>*>(arg);
+        hal::UartMonitorWorker worker(state);
+        while (worker.poll(
+            [](uint8_t* data, size_t size) { return uart_read_bytes(port, data, size, pdMS_TO_TICKS(100)); },
+            [](const uint8_t* data, size_t size) {
+                return uart_tx_chars(port, reinterpret_cast<const char*>(data), size);
+            })) {
+            vTaskDelay(pdMS_TO_TICKS(10));
         }
-
-        {
-            std::lock_guard<std::mutex> lock(GetHAL()->uartMonitorData.mutex);
-            while (!GetHAL()->uartMonitorData.txQueue.empty()) {
-                uint8_t txData = GetHAL()->uartMonitorData.txQueue.front();
-                GetHAL()->uartMonitorData.txQueue.pop();
-                uart_write_bytes(tab5_rs485_uart_num, &txData, 1);
-            }
-        }
-
-        vTaskDelay(10 / portTICK_PERIOD_MS);
+        // Cancellation stops admission first. No HAL object or global GetHAL()
+        // is used by this task, and completion follows all driver cleanup.
+        uart_wait_tx_done(port, pdMS_TO_TICKS(200));
+        state->finishWorker(uart_driver_delete(port) == ESP_OK);
     }
+    vTaskDelete(nullptr);
 }
+}  // namespace
 
 void HalEsp32::rs485_init()
 {
-    mclog::tagInfo(TAG, "rs485 init");
+    const auto state = _uartMonitorState;
+    bool installed   = false;
+    const auto fail  = [&](const char* detail) {
+        state->fail(detail);
+        const bool clean = !installed || uart_driver_delete(port) == ESP_OK;
+        state->finishWorker(clean);
+        ESP_LOGE("hal_rs485", "%s", detail);
+    };
+    const auto result = uart_driver_install(port, 254, 0, 0, nullptr, 0);
+    if (result != ESP_OK) {
+        fail("UART driver installation failed");
+        return;
+    }
+    installed = true;
+    uart_config_t config{};
+    config.baud_rate           = 115200;
+    config.data_bits           = UART_DATA_8_BITS;
+    config.parity              = UART_PARITY_DISABLE;
+    config.stop_bits           = UART_STOP_BITS_1;
+    config.flow_ctrl           = UART_HW_FLOWCTRL_DISABLE;
+    config.rx_flow_ctrl_thresh = 122;
+    config.source_clk          = UART_SCLK_DEFAULT;
+    if (uart_param_config(port, &config) != ESP_OK ||
+        uart_set_pin(port, txPin, rxPin, dePin, UART_PIN_NO_CHANGE) != ESP_OK ||
+        uart_set_mode(port, UART_MODE_RS485_HALF_DUPLEX) != ESP_OK || uart_set_rx_timeout(port, 3) != ESP_OK) {
+        fail("UART configuration failed");
+        return;
+    }
+    auto* context = new (std::nothrow) std::shared_ptr<State>(state);
+    if (!context) {
+        fail("UART worker allocation failed");
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->workerRunning = state->driverActive = true;
+    }
+    if (xTaskCreate(uartWorker, "rs485", 4096, context, 5, nullptr) != pdPASS) {
+        delete context;
+        fail("UART worker creation failed");
+    }
+}
 
-    uart_config_t uart_config;
-    uart_config.baud_rate           = 115200;
-    uart_config.data_bits           = UART_DATA_8_BITS;
-    uart_config.parity              = UART_PARITY_DISABLE;
-    uart_config.stop_bits           = UART_STOP_BITS_1;
-    uart_config.flow_ctrl           = UART_HW_FLOWCTRL_DISABLE;
-    uart_config.rx_flow_ctrl_thresh = 122;
-    uart_config.source_clk          = UART_SCLK_DEFAULT;
-
-    // Install UART driver (we don't need an event queue here)
-    // In this example we don't even use a buffer for sending data.
-    ESP_ERROR_CHECK(uart_driver_install(tab5_rs485_uart_num, TAB5_RS485_BUF_SIZE * 2, 0, 0, NULL, 0));
-
-    // Configure UART parameters
-    ESP_ERROR_CHECK(uart_param_config(tab5_rs485_uart_num, &uart_config));
-
-    ESP_LOGI(TAG, "UART set pins, mode and install driver.");
-
-    // Set UART pins as per KConfig settings
-    ESP_ERROR_CHECK(uart_set_pin(tab5_rs485_uart_num, TAB5_SYS_RS485_TX_PIN, TAB5_SYS_RS485_RX_PIN,
-                                 TAB5_SYS_RS485_DE_PIN, UART_PIN_NO_CHANGE));
-
-    // Set RS485 half duplex mode
-    ESP_ERROR_CHECK(uart_set_mode(tab5_rs485_uart_num, UART_MODE_RS485_HALF_DUPLEX));
-
-    // Set read timeout of UART TOUT feature
-    ESP_ERROR_CHECK(uart_set_rx_timeout(tab5_rs485_uart_num, TAB5_RS485_READ_TOUT));
-
-    xTaskCreate(_rs485_test_task, "rs485", 2000, NULL, 5, NULL);
+bool HalEsp32::stopUartAndWait(uint32_t timeoutMs)
+{
+    const auto state = _uartMonitorState;
+    state->requestStop();
+    if (!state->waitForWorker(timeoutMs)) return false;
+    bool active;
+    {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        active = state->driverActive;
+    }
+    if (!active) return true;
+    // Retry a failed initialization/worker cleanup without discarding ownership.
+    const bool clean = uart_driver_delete(port) == ESP_OK;
+    state->finishWorker(clean);
+    return clean;
 }

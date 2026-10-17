@@ -8,11 +8,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 #include "esp_log.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/queue.h"
-#include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "esp_timer.h"
 
@@ -32,9 +29,15 @@ static void bmi270_delay_us(uint32_t period, void *intf_ptr);
 #define AUX   UINT8_C(0x02)
 static i2c_master_dev_handle_t i2c_dev_handle_bmi270;
 static struct bmi2_dev bmi270;
+static pthread_mutex_t bmi270_mutex = PTHREAD_MUTEX_INITIALIZER;
+static i2c_master_bus_handle_t bmi270_bus;
+static bool bmi270_initialized;
 
-esp_err_t accel_gyro_bmi270_init(i2c_master_bus_handle_t bus_handle)
+static esp_err_t accel_gyro_bmi270_init_unlocked(i2c_master_bus_handle_t bus_handle)
 {
+    if (!bus_handle) return ESP_ERR_INVALID_ARG;
+    if (i2c_dev_handle_bmi270 && bmi270_bus != bus_handle) return ESP_ERR_INVALID_STATE;
+    if (bmi270_initialized) return ESP_OK;
     int8_t rslt;
 
     i2c_device_config_t dev_cfg = {
@@ -42,7 +45,11 @@ esp_err_t accel_gyro_bmi270_init(i2c_master_bus_handle_t bus_handle)
         .device_address  = I2C_DEV_ADDR_BMI270,
         .scl_speed_hz    = 400000,
     };
-    ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &dev_cfg, &i2c_dev_handle_bmi270));
+    if (!i2c_dev_handle_bmi270) {
+        esp_err_t added = i2c_master_bus_add_device(bus_handle, &dev_cfg, &i2c_dev_handle_bmi270);
+        if (added != ESP_OK) return added;
+        bmi270_bus = bus_handle;
+    }
     if (i2c_dev_handle_bmi270 == NULL) {
         ESP_LOGE(TAG, "i2c_dev_handle_bmi270 is NULL");
         return ESP_FAIL;
@@ -63,12 +70,21 @@ esp_err_t accel_gyro_bmi270_init(i2c_master_bus_handle_t bus_handle)
     rslt = bmi270_init(&bmi270);
     bmi2_error_codes_print_result(rslt);
 
+    if (rslt != BMI2_OK) {
+        // Keep a failed-to-remove handle for reuse, never overwrite/leak it.
+        if (i2c_master_bus_rm_device(i2c_dev_handle_bmi270) == ESP_OK) {
+            i2c_dev_handle_bmi270 = NULL;
+            bmi270_bus = NULL;
+        }
+        return ESP_FAIL;
+    }
+    bmi270_initialized = true;
     return ESP_OK;
 }
 
 #define ACCEL UINT8_C(0x00)
 #define GYRO  UINT8_C(0x01)
-void accel_gyro_bmi270_enable_sensor(void)
+static bool accel_gyro_bmi270_enable_sensor_unlocked(void)
 {
     int8_t rslt;
 
@@ -98,9 +114,10 @@ void accel_gyro_bmi270_enable_sensor(void)
             bmi2_error_codes_print_result(rslt);
         }
     }
+    return rslt == BMI2_OK;
 }
 
-void accel_gyro_bmi270_wrist_wear_irq(void)
+static void accel_gyro_bmi270_wrist_wear_irq_unlocked(void)
 {
     if (i2c_dev_handle_bmi270 == NULL) {
         ESP_LOGE(TAG, "i2c_dev_handle_bmi270 is NULL");
@@ -117,7 +134,7 @@ void accel_gyro_bmi270_wrist_wear_irq(void)
         if (bmi270_map_feat_int(&sens_int, 1, &bmi270) != BMI2_OK) {
             ESP_LOGE(TAG, "Wrist gesture mapping failed\n");
         }
-        struct bmi2_int_pin_config int_pin_cfg;
+        struct bmi2_int_pin_config int_pin_cfg = {0};
         int_pin_cfg.pin_type             = BMI2_INT1;
         int_pin_cfg.int_latch            = BMI2_INT_LATCH;
         int_pin_cfg.pin_cfg[0].lvl       = BMI2_INT_ACTIVE_HIGH;  // Active high
@@ -133,7 +150,7 @@ void accel_gyro_bmi270_wrist_wear_irq(void)
     }
 }
 
-void accel_gyro_bmi270_wrist_wear_irq_without_int(void)
+static void accel_gyro_bmi270_wrist_wear_irq_without_int_unlocked(void)
 {
     if (i2c_dev_handle_bmi270 == NULL) {
         ESP_LOGE(TAG, "i2c_dev_handle_bmi270 is NULL");
@@ -150,7 +167,7 @@ void accel_gyro_bmi270_wrist_wear_irq_without_int(void)
         if (bmi270_map_feat_int(&sens_int, 1, &bmi270) != BMI2_OK) {
             ESP_LOGE(TAG, "Wrist gesture mapping failed\n");
         }
-        struct bmi2_int_pin_config int_pin_cfg;
+        struct bmi2_int_pin_config int_pin_cfg = {0};
         int_pin_cfg.pin_type             = BMI2_INT_BOTH;
         int_pin_cfg.int_latch            = BMI2_INT_LATCH;
         int_pin_cfg.pin_cfg[0].lvl       = BMI2_INT_ACTIVE_LOW;  // Active low
@@ -166,7 +183,7 @@ void accel_gyro_bmi270_wrist_wear_irq_without_int(void)
     }
 }
 
-bool accel_gyro_bmi270_motion_irq(void)
+static bool accel_gyro_bmi270_motion_irq_unlocked(void)
 {
     /* Status of api are returned to this variable. */
     int8_t rslt;
@@ -244,16 +261,12 @@ bool accel_gyro_bmi270_motion_irq(void)
     return true;
 }
 
-void accel_gyro_bmi270_get_data(struct bmi2_sens_data *data)
+static bool accel_gyro_bmi270_get_data_unlocked(struct bmi2_sens_data *data)
 {
-    if (i2c_dev_handle_bmi270 == NULL) {
-        ESP_LOGE(TAG, "i2c_dev_handle_bmi270 is NULL");
-        return;
-    }
-    bmi2_get_sensor_data(data, &bmi270);
+    return data && bmi2_get_sensor_data(data, &bmi270) == BMI2_OK;
 }
 
-bool accel_gyro_bmi270_check_irq(void)
+static bool accel_gyro_bmi270_check_irq_unlocked(void)
 {
     if (i2c_dev_handle_bmi270 == NULL) {
         ESP_LOGE(TAG, "i2c_dev_handle_bmi270 is NULL");
@@ -272,19 +285,20 @@ bool accel_gyro_bmi270_check_irq(void)
 
     if ((rslt == BMI2_OK) && (int_status & BMI270_ANY_MOT_STATUS_MASK)) {
         ESP_LOGW(TAG, "Any motion detected");
+        return true;
     }
 
     return false;
 }
 
-void accel_gyro_bmi270_clear_irq_int(void)
+static void accel_gyro_bmi270_clear_irq_int_unlocked(void)
 {
     if (i2c_dev_handle_bmi270 == NULL) {
         ESP_LOGE(TAG, "i2c_dev_handle_bmi270 is NULL");
         return;
     }
 
-    struct bmi2_int_pin_config int_pin_cfg;
+    struct bmi2_int_pin_config int_pin_cfg = {0};
     int_pin_cfg.pin_type             = BMI2_INT_BOTH;
     int_pin_cfg.int_latch            = BMI2_INT_LATCH;
     int_pin_cfg.pin_cfg[0].lvl       = BMI2_INT_ACTIVE_LOW;  // Active low
@@ -295,6 +309,23 @@ void accel_gyro_bmi270_clear_irq_int(void)
     if (bmi2_set_int_pin_config(&int_pin_cfg, &bmi270) != BMI2_OK) {
         ESP_LOGE(TAG, "Wrist gesture pin int disable config failed");
     }
+}
+
+static bool accel_gyro_bmi270_disable_wake_irq_unlocked(void)
+{
+    if (i2c_dev_handle_bmi270 == NULL) return false;
+    struct bmi2_int_pin_config config = {0};
+    if (bmi2_get_int_pin_config(&config, &bmi270) != BMI2_OK) return false;
+    config.pin_type = BMI2_INT_BOTH;
+    for (int pin = 0; pin < 2; ++pin) {
+        config.pin_cfg[pin].output_en = BMI2_INT_OUTPUT_DISABLE;
+        config.pin_cfg[pin].input_en = BMI2_INT_INPUT_DISABLE;
+    }
+    if (bmi2_set_int_pin_config(&config, &bmi270) != BMI2_OK) return false;
+    struct bmi2_int_pin_config actual = {0};
+    if (bmi2_get_int_pin_config(&actual, &bmi270) != BMI2_OK) return false;
+    return actual.pin_cfg[0].output_en == BMI2_INT_OUTPUT_DISABLE &&
+           actual.pin_cfg[1].output_en == BMI2_INT_OUTPUT_DISABLE;
 }
 
 static int8_t bmi270_i2c_read(uint8_t reg_addr, uint8_t *reg_data, uint32_t len, void *intf_ptr)
@@ -588,4 +619,96 @@ void bmi2_error_codes_print_result(int8_t rslt)
             printf("Error [%d] : Unknown error code\r\n", rslt);
             break;
     }
+}
+
+// All users share the Bosch device/configuration and must serialize register sequences.
+
+esp_err_t accel_gyro_bmi270_init(i2c_master_bus_handle_t bus_handle)
+{
+    pthread_mutex_lock(&bmi270_mutex);
+    esp_err_t result = accel_gyro_bmi270_init_unlocked(bus_handle);
+    pthread_mutex_unlock(&bmi270_mutex);
+    return result;
+}
+
+bool accel_gyro_bmi270_enable_sensor(void)
+{
+    pthread_mutex_lock(&bmi270_mutex);
+    if (!bmi270_initialized) { pthread_mutex_unlock(&bmi270_mutex); return false; }
+    bool result = accel_gyro_bmi270_enable_sensor_unlocked();
+    pthread_mutex_unlock(&bmi270_mutex);
+    return result;
+}
+
+void accel_gyro_bmi270_wrist_wear_irq(void)
+{
+    pthread_mutex_lock(&bmi270_mutex);
+    if (!bmi270_initialized) { pthread_mutex_unlock(&bmi270_mutex); return; }
+    accel_gyro_bmi270_wrist_wear_irq_unlocked();
+    pthread_mutex_unlock(&bmi270_mutex);
+}
+
+void accel_gyro_bmi270_wrist_wear_irq_without_int(void)
+{
+    pthread_mutex_lock(&bmi270_mutex);
+    if (!bmi270_initialized) { pthread_mutex_unlock(&bmi270_mutex); return; }
+    accel_gyro_bmi270_wrist_wear_irq_without_int_unlocked();
+    pthread_mutex_unlock(&bmi270_mutex);
+}
+
+void accel_gyro_bmi270_clear_irq_int(void)
+{
+    pthread_mutex_lock(&bmi270_mutex);
+    if (!bmi270_initialized) { pthread_mutex_unlock(&bmi270_mutex); return; }
+    accel_gyro_bmi270_clear_irq_int_unlocked();
+    pthread_mutex_unlock(&bmi270_mutex);
+}
+
+bool accel_gyro_bmi270_get_data(struct bmi2_sens_data *data)
+{
+    pthread_mutex_lock(&bmi270_mutex);
+    if (!bmi270_initialized) { pthread_mutex_unlock(&bmi270_mutex); return false; }
+    bool result = accel_gyro_bmi270_get_data_unlocked(data);
+    pthread_mutex_unlock(&bmi270_mutex);
+    return result;
+}
+
+bool accel_gyro_bmi270_check_irq(void)
+{
+    pthread_mutex_lock(&bmi270_mutex);
+    if (!bmi270_initialized) { pthread_mutex_unlock(&bmi270_mutex); return false; }
+    bool result = accel_gyro_bmi270_check_irq_unlocked();
+    pthread_mutex_unlock(&bmi270_mutex);
+    return result;
+}
+
+bool accel_gyro_bmi270_motion_irq(void)
+{
+    pthread_mutex_lock(&bmi270_mutex);
+    if (!bmi270_initialized) { pthread_mutex_unlock(&bmi270_mutex); return false; }
+    bool result = accel_gyro_bmi270_motion_irq_unlocked();
+    pthread_mutex_unlock(&bmi270_mutex);
+    return result;
+}
+
+bool accel_gyro_bmi270_disable_wake_irq(void)
+{
+    pthread_mutex_lock(&bmi270_mutex);
+    if (!bmi270_initialized) { pthread_mutex_unlock(&bmi270_mutex); return false; }
+    bool result = accel_gyro_bmi270_disable_wake_irq_unlocked();
+    pthread_mutex_unlock(&bmi270_mutex);
+    return result;
+}
+
+bool accel_gyro_bmi270_restore_normal(void)
+{
+    pthread_mutex_lock(&bmi270_mutex);
+    if (!bmi270_initialized) { pthread_mutex_unlock(&bmi270_mutex); return false; }
+    // Attempt every step, including interrupt disable if feature disable fails.
+    uint8_t feature = BMI2_ANY_MOTION;
+    bool featureOff = bmi270_sensor_disable(&feature, 1, &bmi270) == BMI2_OK;
+    bool irqOff = accel_gyro_bmi270_disable_wake_irq_unlocked();
+    bool sampling = accel_gyro_bmi270_enable_sensor_unlocked();
+    pthread_mutex_unlock(&bmi270_mutex);
+    return featureOff && irqOff && sampling;
 }

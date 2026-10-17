@@ -12,16 +12,25 @@
 #include <esp_sleep.h>
 #include <esp_check.h>
 #include <esp_pm.h>
+#include <modules/i2c_device.h>
+#include <modules/rtc/rx8130_wake_timer.h>
+#include <accel_gyro_bmi270.h>
+#include <hal/power_recovery.h>
 
-static const std::string _tag = "power";
+static const std::string _tag   = "power";
+HalEsp32* HalEsp32::_sleepOwner = nullptr;
 
 void HalEsp32::updatePowerMonitorData()
 {
-    // mclog::tagInfo(_tag, "update power monitor");
-    powerMonitorData.busVoltage   = ina226.readBusVoltage();
-    powerMonitorData.shuntVoltage = ina226.readShuntVoltage();
-    powerMonitorData.busPower     = ina226.readBusPower();
-    powerMonitorData.shuntCurrent = ina226.readShuntCurrent();
+    std::lock_guard<std::mutex> lock(_powerMonitorIoMutex);
+    PMData_t data;
+    if (!ina226.readMeasurements(data.busVoltage, data.busPower, data.shuntVoltage, data.shuntCurrent)) {
+        publishPowerMonitorError("Power monitor read failed");
+        return;
+    }
+    data.valid = data.hasSample = true;
+    data.sampledAtMs            = millis();
+    publishPowerMonitorData(data);
 }
 
 void HalEsp32::setChargeQcEnable(bool enable)
@@ -72,92 +81,121 @@ bool HalEsp32::getExt5vEnable()
     return _ext_5v_enable;
 }
 
-void HalEsp32::powerOff()
+HalEsp32::~HalEsp32()
 {
-    mclog::tagInfo(_tag, "power off");
-
-    playShutdownSfx();
-    setDisplayBrightness(0);
-
-    delay(100);
-    while (1) {
-        if (getMusicPlayTestState() == hal::HalBase::MUSIC_PLAY_IDLE) {
-            break;
-        }
-        delay(100);
+    if (!stopUartAndWait(2000)) {
+        mclog::tagError(_tag, "UART still active during HAL destruction");
+        std::abort();
     }
-
-    bsp_generate_poweroff_signal();
-}
-
-extern esp_lcd_touch_handle_t _lcd_touch_handle;
-
-void HalEsp32::sleepAndTouchWakeup()
-{
-    mclog::tagInfo(_tag, "sleep and touch wakeup");
-
     lvglLock();
-    auto brightness = getDisplayBrightness();
-    setDisplayBrightness(0);
-
-    uint16_t touch_x[1];
-    uint16_t touch_y[1];
-    uint16_t touch_strength[1];
-    uint8_t touch_cnt = 0;
-
-    while (1) {
-        esp_lcd_touch_read_data(_lcd_touch_handle);
-        bool touchpad_pressed =
-            esp_lcd_touch_get_coordinates(_lcd_touch_handle, touch_x, touch_y, touch_strength, &touch_cnt, 1);
-        // mclog::tagInfo(_tag, "touchpad pressed: {}", touchpad_pressed);
-        if (!touchpad_pressed) {
-            break;
-        }
-        delay(100);
-    }
-
-    while (1) {
-        esp_lcd_touch_read_data(_lcd_touch_handle);
-        bool touchpad_pressed =
-            esp_lcd_touch_get_coordinates(_lcd_touch_handle, touch_x, touch_y, touch_strength, &touch_cnt, 1);
-        // mclog::tagInfo(_tag, "touchpad pressed: {}", touchpad_pressed);
-        if (touchpad_pressed) {
-            break;
-        }
-        delay(100);
-    }
-
-    // esp_restart();
-
+    if (_sleepInput && _touchReader && lv_indev_get_read_cb(_sleepInput) == readSleepTouch)
+        lv_indev_set_read_cb(_sleepInput, _touchReader);
+    if (_sleepOwner == this) _sleepOwner = nullptr;
     lvglUnlock();
-    delay(500);
-    setDisplayBrightness(brightness);
 }
 
-void HalEsp32::sleepAndRtcWakeup()
+bool HalEsp32::isDisplayAsleep()
 {
-    mclog::tagInfo(_tag, "start sleep and rtc wakeup");
+    return _displayAsleep.load();
+}
 
-    clearRtcIrq();
-    clearImuIrq();
-
-    delay(200);
-
-    mclog::tagInfo(_tag, "set rtc alarm");
-    struct tm time;
-    rx8130.getTime(&time);
-    time.tm_hour = 0;
-    time.tm_min  = 1;
-    time.tm_sec  = 49;
-    rx8130.setTime(&time);
-    time.tm_hour = 0;
-    time.tm_min  = 2;
-    time.tm_sec  = 0;
-    rx8130.setAlarmIrq(&time);
-
-    // delay(800);
-    powerOff();
-    while (1) {
-        delay(100);
+bool HalEsp32::wakeDisplay()
+{
+    lvglLock();
+    const bool ok = !_displayAsleep.load() || bsp_display_brightness_set(_wakeBrightness) == ESP_OK;
+    if (ok && _displayAsleep.load()) {
+        _current_lcd_brightness = _wakeBrightness;
+        _displaySleepGate.wake();
+        _displayAsleep.store(false);
     }
+    lvglUnlock();
+    return ok;
+}
+
+void HalEsp32::readSleepTouch(lv_indev_t* indev, lv_indev_data_t* data)
+{
+    auto* hal = _sleepOwner;
+    if (!hal) {
+        data->state = LV_INDEV_STATE_RELEASED;
+        return;
+    }
+    hal->_touchReader(indev, data);
+    const bool pressed  = data->state == LV_INDEV_STATE_PRESSED;
+    const auto filtered = hal->_displaySleepGate.filter(pressed);
+    if (filtered.wake && !hal->wakeDisplay()) hal->_displaySleepGate.arm(true);
+    if (filtered.consume) data->state = LV_INDEV_STATE_RELEASED;
+}
+
+hal::PowerResult HalEsp32::performPowerAction(hal::PowerAction action, uint16_t rtcMinutes)
+{
+    std::lock_guard<std::mutex> actionLock(_powerActionMutex);
+    if (action == hal::PowerAction::SleepTouch) {
+        LvglLockGuard lock;
+        if (_displayAsleep.load()) return {false, true, false, "Display already off"};
+        auto* input = bsp_display_get_input_dev();
+        if (!input) return {false, false, false, "Touch wake unavailable"};
+        if (!_touchReader) {
+            _touchReader = lv_indev_get_read_cb(input);
+            if (!_touchReader) return {false, false, false, "Touch reader unavailable"};
+            _sleepInput = input;
+            _sleepOwner = this;
+            lv_indev_set_read_cb(input, readSleepTouch);
+        }
+        _wakeBrightness = getDisplayBrightness();
+        if (bsp_display_brightness_set(0) != ESP_OK) return {false, false, false, "Display off failed"};
+        _current_lcd_brightness = 0;
+        _displaySleepGate.arm(lv_indev_get_state(input) == LV_INDEV_STATE_PRESSED);
+        _displayAsleep.store(true);
+        return {true, true, false, "Display off"};
+    }
+    if (action != hal::PowerAction::PowerOff && action != hal::PowerAction::SleepShake &&
+        action != hal::PowerAction::SleepRtc)
+        return {false, false, false, "Unknown power action"};
+    if (_displayAsleep.load()) return {false, true, false, "Wake display before shutdown"};
+    if (action == hal::PowerAction::SleepRtc && (rtcMinutes < 1 || rtcMinutes > 60))
+        return {false, false, false, "Wake interval must be 1-60 minutes"};
+
+    // Screen Off returned above: apps and networking remain active in that mode.
+    // Physical shutdown must wait for OTA boot-commit/cleanup before power loss.
+    if (!stopNetworkAndWait(5000)) {
+        resumeNetwork();
+        return {false, false, false, "Network/OTA did not stop; shutdown cancelled"};
+    }
+    std::lock_guard<std::mutex> rtcLock(_rtcIoMutex);
+    modules::HalI2cDevice rtcDevice(hal::ModuleBus::MBus, 0x32);
+    rtc::Rx8130WakeTimer timer(rtcDevice);
+    auto failed = [&](const std::string& message) {
+        auto result = hal::recoverPowerFailure(
+            hal::PowerResult{false, false, false, message}, [&] { return timer.cancel(); },
+            [&] { return accel_gyro_bmi270_restore_normal(); });
+        resumeAudio();  // Reopen admission only after preparation has unwound.
+        resumeNetwork();
+        return result;
+    };
+    if (!timer.cancel()) return failed(timer.error());
+    if (accel_gyro_bmi270_init(bsp_i2c_get_handle()) != ESP_OK) return failed("IMU initialization failed");
+    if (!accel_gyro_bmi270_disable_wake_irq()) return failed("Motion wake disable not verified");
+    if (action == hal::PowerAction::SleepShake && !accel_gyro_bmi270_motion_irq())
+        return failed("Motion wake configuration failed");
+
+    // Cancel every codec user and close admission until poweroff or recovery.
+    if (!stopAudioAndWait(2000)) return failed("Audio did not stop; shutdown cancelled");
+    if (action == hal::PowerAction::SleepRtc && !timer.arm(rtcMinutes * 60)) return failed(timer.error());
+    uint8_t brightness = 0;
+    bool dimmed        = false;
+    {
+        LvglLockGuard lock;
+        brightness = getDisplayBrightness();
+        dimmed     = bsp_display_brightness_set(0) == ESP_OK;
+        if (dimmed) _current_lcd_brightness = 0;
+    }
+    if (!dimmed) return failed("Display off failed; shutdown cancelled");
+    bsp_generate_poweroff_signal();
+    delay(1500);
+    // A functioning board power switch never returns here; reporting success would hide a failed shutdown.
+    {
+        LvglLockGuard lock;
+        setDisplayBrightness(brightness);
+    }
+    return failed("Power-off signal sent but device is still running");
 }

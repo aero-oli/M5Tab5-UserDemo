@@ -24,7 +24,7 @@ SOFTWARE.
 
 */
 
-#include <math.h>
+#include <cmath>
 #include "ina226.hpp"
 
 #define I2C_MASTER_TIMEOUT_MS 50  // 超时时间
@@ -38,7 +38,8 @@ bool INA226::begin(i2c_master_bus_handle_t bus_handle, uint8_t address)
         .device_address  = address,
         .scl_speed_hz    = 400000,
     };
-    ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &dev_cfg, &i2c_dev_handle_ina226));
+    configured = calibrated = false;
+    if (i2c_master_bus_add_device(bus_handle, &dev_cfg, &i2c_dev_handle_ina226) != ESP_OK) return false;
 
     if (i2c_dev_handle_ina226 == NULL) {
         return false;
@@ -57,13 +58,14 @@ bool INA226::configure(ina226_averages_t avg, ina226_busConvTime_t busConvTime, 
     vBusMax   = 36;
     vShuntMax = 0.08192f;
 
-    writeRegister16(INA226_REG_CONFIG, config);
-
-    return true;
+    configured = writeRegister16(INA226_REG_CONFIG, config);
+    return configured;
 }
 
 bool INA226::calibrate(float rShuntValue, float iMaxExpected)
 {
+    calibrated = false;
+    if (!std::isfinite(rShuntValue) || !std::isfinite(iMaxExpected) || rShuntValue <= 0 || iMaxExpected <= 0) return false;
     uint16_t calibrationValue;
     rShunt = rShuntValue;
 
@@ -84,9 +86,8 @@ bool INA226::calibrate(float rShuntValue, float iMaxExpected)
 
     calibrationValue = (uint16_t)((0.00512) / (currentLSB * rShunt));
 
-    writeRegister16(INA226_REG_CALIBRATION, calibrationValue);
-
-    return true;
+    calibrated = writeRegister16(INA226_REG_CALIBRATION, calibrationValue);
+    return calibrated;
 }
 
 float INA226::getMaxPossibleCurrent(void)
@@ -120,6 +121,20 @@ float INA226::getMaxShuntVoltage(void)
 float INA226::getMaxPower(void)
 {
     return (getMaxCurrent() * vBusMax);
+}
+
+bool INA226::readMeasurements(float& busVoltage, float& busPower, float& shuntVoltage, float& shuntCurrent)
+{
+    if (!configured || !calibrated || !i2c_dev_handle_ina226 || currentLSB <= 0 || powerLSB <= 0) return false;
+    int16_t voltage, power, shunt, current;
+    if (!readRegister16(INA226_REG_BUSVOLTAGE, voltage) || !readRegister16(INA226_REG_POWER, power) ||
+        !readRegister16(INA226_REG_SHUNTVOLTAGE, shunt) || !readRegister16(INA226_REG_CURRENT, current)) return false;
+    // Publish a complete transaction only. Genuine all-zero measurements succeed.
+    busVoltage = static_cast<uint16_t>(voltage) * 0.00125f;
+    busPower = static_cast<uint16_t>(power) * powerLSB;
+    shuntVoltage = shunt * 0.0000025f;
+    shuntCurrent = current * currentLSB;
+    return true;
 }
 
 float INA226::readBusPower(void)
@@ -299,16 +314,27 @@ bool INA226::isAlert(void)
 
 int16_t INA226::readRegister16(uint8_t reg)
 {
-    uint8_t r_buffer[2] = {0};
-    i2c_master_transmit_receive(i2c_dev_handle_ina226, &reg, 1, r_buffer, 2, I2C_MASTER_TIMEOUT_MS);
-    return r_buffer[0] << 8 | r_buffer[1];
+    int16_t value = 0;
+    readRegister16(reg, value);
+    return value;
 }
 
-void INA226::writeRegister16(uint8_t reg, uint16_t val)
+bool INA226::readRegister16(uint8_t reg, int16_t& value)
 {
+    if (!i2c_dev_handle_ina226) return false;
+    uint8_t r_buffer[2] = {0};
+    if (i2c_master_transmit_receive(i2c_dev_handle_ina226, &reg, 1, r_buffer, 2, I2C_MASTER_TIMEOUT_MS) != ESP_OK)
+        return false;
+    value = static_cast<int16_t>(r_buffer[0] << 8 | r_buffer[1]);
+    return true;
+}
+
+bool INA226::writeRegister16(uint8_t reg, uint16_t val)
+{
+    if (!i2c_dev_handle_ina226) return false;
     uint8_t w_buffer[3] = {0};
     w_buffer[0]         = reg;
     w_buffer[1]         = (val >> 8) & 0xFF;
     w_buffer[2]         = val & 0xFF;
-    i2c_master_transmit(i2c_dev_handle_ina226, w_buffer, 3, I2C_MASTER_TIMEOUT_MS);
+    return i2c_master_transmit(i2c_dev_handle_ina226, w_buffer, 3, I2C_MASTER_TIMEOUT_MS) == ESP_OK;
 }

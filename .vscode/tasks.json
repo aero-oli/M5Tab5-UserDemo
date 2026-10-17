@@ -1,0 +1,139 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Tab5: fetch dependencies",
+      "type": "shell",
+      "command": "python3 ./fetch_repos.py",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/zsh",
+          "args": ["-lc"]
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Tab5: ESP-IDF reconfigure",
+      "type": "shell",
+      "command": "set -e; if [ -f ../esp-idf/export.sh ]; then . ../esp-idf/export.sh; elif [ -f \"$HOME/esp/esp-idf/export.sh\" ]; then . \"$HOME/esp/esp-idf/export.sh\"; elif [ -n \"$IDF_PATH\" ] && [ -f \"$IDF_PATH/export.sh\" ]; then . \"$IDF_PATH/export.sh\"; else echo 'ESP-IDF export.sh not found. Put esp-idf next to this repo or set IDF_PATH.'; exit 1; fi; cd platforms/tab5; idf.py reconfigure",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/zsh",
+          "args": ["-lc"]
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Tab5: ESP-IDF build",
+      "type": "shell",
+      "command": "set -e; if [ -f ../esp-idf/export.sh ]; then . ../esp-idf/export.sh; elif [ -f \"$HOME/esp/esp-idf/export.sh\" ]; then . \"$HOME/esp/esp-idf/export.sh\"; elif [ -n \"$IDF_PATH\" ] && [ -f \"$IDF_PATH/export.sh\" ]; then . \"$IDF_PATH/export.sh\"; else echo 'ESP-IDF export.sh not found. Put esp-idf next to this repo or set IDF_PATH.'; exit 1; fi; cd platforms/tab5; idf.py build",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/zsh",
+          "args": ["-lc"]
+        }
+      },
+      "group": "build",
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "Tab5: ESP-IDF flash",
+      "type": "shell",
+      "command": "set -e; if [ -f ../esp-idf/export.sh ]; then . ../esp-idf/export.sh; elif [ -f \"$HOME/esp/esp-idf/export.sh\" ]; then . \"$HOME/esp/esp-idf/export.sh\"; elif [ -n \"$IDF_PATH\" ] && [ -f \"$IDF_PATH/export.sh\" ]; then . \"$IDF_PATH/export.sh\"; else echo 'ESP-IDF export.sh not found. Put esp-idf next to this repo or set IDF_PATH.'; exit 1; fi; cd platforms/tab5; idf.py flash",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/zsh",
+          "args": ["-lc"]
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Tab5: ESP-IDF monitor",
+      "type": "shell",
+      "command": "set -e; if [ -f ../esp-idf/export.sh ]; then . ../esp-idf/export.sh; elif [ -f \"$HOME/esp/esp-idf/export.sh\" ]; then . \"$HOME/esp/esp-idf/export.sh\"; elif [ -n \"$IDF_PATH\" ] && [ -f \"$IDF_PATH/export.sh\" ]; then . \"$IDF_PATH/export.sh\"; else echo 'ESP-IDF export.sh not found. Put esp-idf next to this repo or set IDF_PATH.'; exit 1; fi; cd platforms/tab5; idf.py monitor",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/zsh",
+          "args": ["-lc"]
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Tab5: ESP-IDF menuconfig",
+      "type": "shell",
+      "command": "set -e; if [ -f ../esp-idf/export.sh ]; then . ../esp-idf/export.sh; elif [ -f \"$HOME/esp/esp-idf/export.sh\" ]; then . \"$HOME/esp/esp-idf/export.sh\"; elif [ -n \"$IDF_PATH\" ] && [ -f \"$IDF_PATH/export.sh\" ]; then . \"$IDF_PATH/export.sh\"; else echo 'ESP-IDF export.sh not found. Put esp-idf next to this repo or set IDF_PATH.'; exit 1; fi; cd platforms/tab5; idf.py menuconfig",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/zsh",
+          "args": ["-lc"]
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Desktop: configure",
+      "type": "shell",
+      "command": "cmake --preset desktop",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/zsh",
+          "args": ["-lc"]
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Desktop: build",
+      "type": "shell",
+      "command": "cmake --build --preset desktop",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/zsh",
+          "args": ["-lc"]
+        }
+      },
+      "dependsOn": ["Desktop: configure"],
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "Desktop: test",
+      "type": "shell",
+      "command": "ctest --preset desktop",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/zsh",
+          "args": ["-lc"]
+        }
+      },
+      "dependsOn": ["Desktop: build"],
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "Desktop: run",
+      "type": "shell",
+      "command": "./build/vscode-desktop/app_desktop_build",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/zsh",
+          "args": ["-lc"]
+        }
+      },
+      "dependsOn": ["Desktop: build"],
+      "problemMatcher": []
+    }
+  ]
+}

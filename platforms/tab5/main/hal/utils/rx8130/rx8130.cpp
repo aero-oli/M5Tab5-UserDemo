@@ -229,7 +229,7 @@ void RX8130_Class::setTimerIrq(uint16_t seconds)
 
 uint8_t RX8130_Class::readRegister8(uint8_t reg)
 {
-    uint8_t value;
+    uint8_t value = 0;
     readRegister(reg, &value, 1);
     return value;
 }
@@ -244,7 +244,7 @@ void RX8130_Class::readRegister(uint8_t reg, uint8_t* buf, uint8_t len)
 {
     uint8_t w_buffer[1] = {0};
     w_buffer[0]         = reg;
-    i2c_master_transmit_receive(_i2c_device_handle, w_buffer, 1, buf, len, portMAX_DELAY);
+    i2c_master_transmit_receive(_i2c_device_handle, w_buffer, 1, buf, len, 100);
 }
 
 void RX8130_Class::writeRegister(uint8_t reg, uint8_t* buf, uint8_t len)
@@ -252,5 +252,5 @@ void RX8130_Class::writeRegister(uint8_t reg, uint8_t* buf, uint8_t len)
     uint8_t w_buffer[1 + len];
     w_buffer[0] = reg;
     memcpy(w_buffer + 1, buf, len);
-    i2c_master_transmit(_i2c_device_handle, w_buffer, 1 + len, portMAX_DELAY);
+    i2c_master_transmit(_i2c_device_handle, w_buffer, 1 + len, 100);
 }

@@ -3,6 +3,9 @@ file(GLOB_RECURSE APP_LAYER_SRCS
     ../../../app/*.cc
     ../../../app/*.cpp
 )
+list(FILTER APP_LAYER_SRCS EXCLUDE REGEX ".*app/apps/app_template/.*")
+list(FILTER APP_LAYER_SRCS EXCLUDE REGEX ".*app/apps/app_startup_anim/.*")
+list(FILTER APP_LAYER_SRCS EXCLUDE REGEX ".*app/assets/images/(launcher_bg|sw_.*|arrow_state_on|internal_i2c_dev_chart|porta_i2c_.*|logo_.*|chg_arrow_.*)\\.c$")
 
 set(APP_LAYER_INCS
     ../../../app

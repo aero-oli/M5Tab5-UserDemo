@@ -1,0 +1,70 @@
+name: Build and test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install desktop build tools
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libsdl2-dev python3 git
+      - name: Test dependency fetching without network fixtures
+        run: python3 tests/test_fetch_repos.py
+      - name: Fetch and verify pinned dependencies
+        run: |
+          python3 fetch_repos.py
+          python3 fetch_repos.py --verify
+      - name: Configure and build
+        run: |
+          cmake --preset desktop
+          cmake --build --preset desktop --parallel 2
+      - name: Check immediate incremental rebuild
+        run: |
+          cmake --build --preset desktop --parallel 2 2>&1 | tee /tmp/desktop-rebuild.log
+          if grep -E 'Building .* object|Linking |premature end' /tmp/desktop-rebuild.log; then
+            echo 'Unchanged build unexpectedly rebuilt targets or recovered a damaged Ninja log.'
+            exit 1
+          fi
+      - name: Run project tests and headless UI journeys
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: ctest --preset desktop
+
+  firmware:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    container:
+      # Official espressif/idf:v5.4.2 multi-platform image, pinned to its registry digest.
+      image: espressif/idf@sha256:4317595a911886e04cbc6d731315d5fc2918e510b6733fc7d03381ab2d270082
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Trust the mounted checkout in the build container
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Fetch and verify pinned dependencies
+        run: |
+          python3 fetch_repos.py
+          python3 fetch_repos.py --verify
+      - name: Build ESP32-P4 firmware and bootloader with ESP-IDF 5.4.2
+        run: |
+          . /opt/esp/idf/export.sh
+          test "$(git -C "$IDF_PATH" rev-parse HEAD)" = f5c3654a1c2d2a01f7f67def7a0dc48e691f63c0
+          idf.py -C platforms/tab5 build
+          git diff --exit-code -- platforms/tab5/dependencies.lock

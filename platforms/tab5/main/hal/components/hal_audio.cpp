@@ -1,255 +1,233 @@
-/*
- * SPDX-FileCopyrightText: 2025 M5Stack Technology CO LTD
- *
- * SPDX-License-Identifier: MIT
- */
+/* SPDX-License-Identifier: MIT */
 #include "hal/hal_esp32.h"
-#include <mooncake_log.h>
+#include <hal/audio_session.h>
+#include <apps/runtime/async_job_runner.h>
+#include <algorithm>
+#include <atomic>
 #include <vector>
-#include <memory>
-#include <string.h>
 #include <bsp/m5stack_tab5.h>
+#include <audio_player.h>
+#include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-#include <thread>
-#include <mutex>
-#include <audio_player.h>
 
-static const char* TAG = "audio";
+namespace {
+using Operation = hal::HalBase::AudioOperation;
+using Phase     = hal::HalBase::AudioPhase;
+using Token     = hal::AudioSession::Token;
 
-static uint8_t _current_speaker_volume = 60;
+// Process-lifetime state: library callbacks never reference an app or HAL object.
+hal::AudioSession session;
+app_runtime::AsyncJobRunner runner;
+std::atomic<uint8_t> volume{60};
+hal::AudioVolume outputVolume;  // Touched only by the exclusive output owner.
+std::atomic<Token> musicToken{0};
+std::atomic<bool> musicStarted{false};
+std::atomic<bool> musicDone{false};
+bool playerReady               = false;  // Only the reserved audio worker touches these flags.
+bool callbackReady             = false;
+constexpr uint16_t maxRecordMs = 10000;
+constexpr size_t maxPcmSamples = 48000 * 2 * 10;
 
-void HalEsp32::setSpeakerVolume(uint8_t volume)
+bsp_codec_config_t* codec()
 {
-    _current_speaker_volume = std::clamp((int)volume, 0, 100);
-    mclog::tagInfo(TAG, "set speaker volume: {}%", _current_speaker_volume);
+    return bsp_get_codec_handle();
 }
 
-uint8_t HalEsp32::getSpeakerVolume()
+bool check(Token token, esp_err_t result, const char* error)
 {
-    return _current_speaker_volume;
+    if (result == ESP_OK) return true;
+    session.fail(token, error);
+    return false;
 }
 
-void HalEsp32::audioRecord(std::vector<int16_t>& data, uint16_t durationMs, float gain)
+bool applyOutputVolume(Token token)
 {
-    data.resize(48000 * 4 * durationMs / 1000);
-
-    // ESP_LOGI(TAG, "start record");
-    bsp_codec_config_t* codec_handle = bsp_get_codec_handle();
-    codec_handle->set_in_gain(gain);
-    size_t bytes_read = 0;
-    codec_handle->i2s_read((char*)data.data(), (48000 * 4 * durationMs / 1000) * sizeof(uint16_t), &bytes_read,
-                           portMAX_DELAY);
-    // ESP_LOGI(TAG, "record done, %d bytes", bytes_read);
+    return outputVolume.apply(
+        volume.load(),
+        [token](uint8_t value) { return check(token, codec()->set_volume(value), "Audio volume setup failed"); },
+        [token](bool muted) { return check(token, codec()->set_mute(muted), "Audio mute setup failed"); });
 }
 
-struct AudioTaskData_t {
-    std::mutex mutex;
-    bool is_task_running  = false;
-    bool is_audio_ready   = false;
-    bool is_audio_playing = false;
-    std::vector<int16_t> audio_data;
-};
-static AudioTaskData_t _audio_task_data;
-
-void _audio_play_task(void* param)
+bool prepareOutput(Token token)
 {
-    size_t bytes_written = 0;
+    auto* handle = codec();
+    if (!handle || !handle->set_volume || !handle->i2s_reconfig_clk_fn || !handle->i2s_write || !handle->set_mute) {
+        session.fail(token, "Audio codec unavailable");
+        return false;
+    }
+    outputVolume.invalidate();
+    return check(token, handle->i2s_reconfig_clk_fn(48000, 16, I2S_SLOT_MODE_STEREO), "Audio clock setup failed") &&
+           applyOutputVolume(token);
+}
 
-    while (true) {
-        _audio_task_data.mutex.lock();
+bool writePcm(Token token, void* data, size_t bytes)
+{
+    return hal::transferAudio(session, token, data, bytes, [token](void* buffer, size_t length, size_t& done) {
+        if (!applyOutputVolume(token)) return false;
+        return codec()->i2s_write(buffer, length, &done, 1000) == ESP_OK;
+    });
+}
 
-        if (_audio_task_data.is_audio_ready) {
-            _audio_task_data.is_audio_playing = true;
-            _audio_task_data.mutex.unlock();
+bool recordPcm(Token token, std::vector<int16_t>& data, uint16_t durationMs, float gain)
+{
+    if (durationMs > maxRecordMs) {
+        session.fail(token, "Recording duration exceeds 10 seconds");
+        return false;
+    }
+    auto* handle = codec();
+    if (!handle || !handle->i2s_read || !handle->set_in_gain || !handle->codec_reconfig_fn) {
+        session.fail(token, "Audio input unavailable");
+        return false;
+    }
+    // The BSP uses this callback for ES7210 sample-info.channel (four TDM
+    // slots), despite its historical i2s_slot_mode_t parameter type.
+    if (!check(token, handle->codec_reconfig_fn(48000, 16, static_cast<i2s_slot_mode_t>(4)),
+               "Microphone clock setup failed"))
+        return false;
+    if (!check(token, handle->set_in_gain(gain), "Microphone gain setup failed")) return false;
+    data.resize(static_cast<size_t>(48000) * 4 * durationMs / 1000);
+    return hal::transferAudio(session, token, data.data(), data.size() * sizeof(int16_t),
+                              [handle](void* buffer, size_t length, size_t& done) {
+                                  return handle->i2s_read(buffer, length, &done, 1000) == ESP_OK;
+                              });
+}
 
-            bsp_codec_config_t* codec_handle = bsp_get_codec_handle();
-            codec_handle->set_volume(_current_speaker_volume);
-            codec_handle->i2s_reconfig_clk_fn(48000, 16, I2S_SLOT_MODE_STEREO);
-            codec_handle->i2s_write(_audio_task_data.audio_data.data(),
-                                    _audio_task_data.audio_data.size() * sizeof(uint16_t), &bytes_written,
-                                    portMAX_DELAY);
+void finishPcm(Token token)
+{
+    auto* handle = codec();
+    if (handle && handle->set_mute)
+        outputVolume.mute([&](bool muted) { return check(token, handle->set_mute(muted), "Audio mute failed"); });
+    session.finish(token);
+}
 
-            _audio_task_data.mutex.lock();
-            _audio_task_data.is_audio_playing = false;
-            _audio_task_data.is_audio_ready   = false;
-            _audio_task_data.mutex.unlock();
+template <typename Work>
+void startWorker(Operation operation, Phase phase, Work work)
+{
+    const auto token = session.reserve(operation, phase);
+    if (!token) return;
+    if (!runner.start("Audio", [token, work = std::move(work)]() mutable { work(token); })) session.startFailed(token);
+}
 
-            continue;
+void recordTest(Token token, bool dual)
+{
+    std::vector<int16_t> input;
+    if (recordPcm(token, input, 3000, 240) && !session.cancelled(token)) {
+        std::vector<int16_t> output(input.size() / 2);
+        for (size_t frame = 0; frame < input.size() / 4; ++frame) {
+            output[frame * 2]     = input[frame * 4 + (dual ? 0 : 3)];
+            output[frame * 2 + 1] = input[frame * 4 + (dual ? 2 : 3)];
         }
-
-        _audio_task_data.mutex.unlock();
-        vTaskDelay(10 / portTICK_PERIOD_MS);
+        session.setPhase(token, Phase::Playing);
+        if (!session.cancelled(token) && prepareOutput(token))
+            writePcm(token, output.data(), output.size() * sizeof(int16_t));
     }
+    finishPcm(token);
 }
 
-void HalEsp32::audioPlay(std::vector<int16_t>& data, bool async)
+esp_err_t musicMute(AUDIO_PLAYER_MUTE_SETTING setting)
 {
-    if (async) {
-        std::lock_guard<std::mutex> lock(_audio_task_data.mutex);
+    const auto token = musicToken.load();
+    if (setting == AUDIO_PLAYER_UNMUTE && session.cancelled(token)) return ESP_FAIL;
+    if (setting == AUDIO_PLAYER_UNMUTE) return applyOutputVolume(token) ? ESP_OK : ESP_FAIL;
+    return outputVolume.mute(
+               [token](bool muted) { return check(token, codec()->set_mute(muted), "Audio mute failed"); })
+               ? ESP_OK
+               : ESP_FAIL;
+}
 
-        if (_audio_task_data.is_audio_playing) {
-            mclog::tagWarn(TAG, "audio is playing");
-            return;
-        }
+esp_err_t musicClock(uint32_t rate, uint32_t bits, i2s_slot_mode_t channels)
+{
+    const auto token = musicToken.load();
+    if (session.cancelled(token)) return ESP_FAIL;
+    outputVolume.invalidate();
+    const auto result = codec()->i2s_reconfig_clk_fn(rate, bits, channels);
+    check(token, result, "Music clock setup failed");
+    return result;
+}
 
-        if (!_audio_task_data.is_task_running) {
-            _audio_task_data.is_task_running = true;
-            xTaskCreate(_audio_play_task, "audio", 4096, nullptr, 5, nullptr);
-        }
+esp_err_t musicWrite(void* data, size_t length, size_t* written, uint32_t)
+{
+    *written         = 0;
+    const auto token = musicToken.load();
+    if (!writePcm(token, data, length)) return ESP_FAIL;
+    *written = length;
+    return ESP_OK;
+}
 
-        _audio_task_data.audio_data     = data;
-        _audio_task_data.is_audio_ready = true;
-    } else {
-        bsp_codec_config_t* codec_handle = bsp_get_codec_handle();
-        codec_handle->set_volume(_current_speaker_volume);
-        size_t bytes_written = 0;
-        codec_handle->i2s_reconfig_clk_fn(48000, 16, I2S_SLOT_MODE_STEREO);
-        codec_handle->i2s_write(data.data(), data.size() * sizeof(uint16_t), &bytes_written, portMAX_DELAY);
+void musicEvent(audio_player_cb_ctx_t* event)
+{
+    if (event->audio_event == AUDIO_PLAYER_CALLBACK_EVENT_PLAYING) musicStarted.store(true);
+    if (event->audio_event == AUDIO_PLAYER_CALLBACK_EVENT_IDLE && musicStarted.load()) musicDone.store(true);
+    if (event->audio_event == AUDIO_PLAYER_CALLBACK_EVENT_UNKNOWN_FILE_TYPE)
+        session.fail(musicToken.load(), "Unsupported music file");
+}
+
+bool ensurePlayer(Token token)
+{
+    if (!playerReady) {
+        audio_player_config_t config = {
+            .mute_fn    = musicMute,
+            .clk_set_fn = musicClock,
+            .write_fn   = musicWrite,
+            .priority   = 8,
+            .coreID     = 1,
+        };
+        if (!check(token, audio_player_new(config), "Music player initialization failed")) return false;
+        // This player and callbacks live for the process. Its idle task waits on its
+        // queue without touching the codec. Never call the vendor's delete(): it can
+        // free live resources after only 500ms, less than the codec's 1s IO timeout.
+        playerReady = true;
     }
-}
-
-/* -------------------------------------------------------------------------- */
-/*                            Record and play test                            */
-/* -------------------------------------------------------------------------- */
-struct RecTestData_t {
-    std::mutex mutex;
-    bool isDualMic                     = true;
-    hal::HalBase::MicTestState_t state = hal::HalBase::MIC_TEST_IDLE;
-    int16_t* audio_buffer              = nullptr;
-    int16_t* read_buffer               = nullptr;
-};
-static RecTestData_t _rec_test_data;
-
-static void _rec_test_task(void* param)
-{
-    mclog::tagInfo(TAG, "start record test");
-
-    const size_t read_buffer_size  = 48000 * 4 * 3;
-    const size_t audio_buffer_size = 48000 * 2 * 3;
-
-    // Create buffers
-    if (_rec_test_data.audio_buffer == nullptr) {
-        _rec_test_data.audio_buffer = new int16_t[audio_buffer_size](0);
+    if (!callbackReady) {
+        if (!check(token, audio_player_callback_register(musicEvent, nullptr), "Music callback registration failed"))
+            return false;
+        callbackReady = true;
     }
-    if (_rec_test_data.read_buffer == nullptr) {
-        _rec_test_data.read_buffer = new int16_t[read_buffer_size](0);
+    return true;
+}
+
+void musicPlayback(Token token, const uint8_t* begin, const uint8_t* end)
+{
+    musicToken.store(token);
+    musicStarted.store(false);
+    musicDone.store(false);
+    if (session.cancelled(token) || !prepareOutput(token) || !ensurePlayer(token)) {
+        finishPcm(token);
+        return;
     }
-
-    const size_t sample_rate   = 48000;
-    const size_t total_samples = sample_rate * 4 * 3;  // 4通道，3秒
-    const size_t chunk_samples = 4096 * 4;             // 4通道一帧
-    const size_t chunk_bytes   = chunk_samples * sizeof(int16_t);
-
-    size_t total_read_samples = 0;
-    size_t total_read_bytes   = 0;
-
-    bsp_codec_config_t* codec_handle = bsp_get_codec_handle();
-    codec_handle->set_in_gain(240);
-
-    int16_t* read_buf = _rec_test_data.read_buffer;
-    memset(read_buf, 0, total_samples * sizeof(int16_t));  // 清零
-
-    mclog::tagInfo(TAG, "start record");
-
-    while (total_read_samples < total_samples) {
-        size_t bytes_to_read = chunk_bytes;
-        if (total_read_samples + chunk_samples > total_samples) {
-            bytes_to_read = (total_samples - total_read_samples) * sizeof(int16_t);
-        }
-
-        size_t bytes_read = 0;
-        codec_handle->i2s_read((char*)(read_buf + total_read_samples), bytes_to_read, &bytes_read, portMAX_DELAY);
-
-        total_read_samples += bytes_read / sizeof(int16_t);
-        total_read_bytes += bytes_read;
-
-        vTaskDelay(pdMS_TO_TICKS(5));
+    FILE* file = fmemopen(const_cast<uint8_t*>(begin), end - begin, "rb");
+    if (!file) {
+        session.fail(token, "Could not open embedded music");
+        finishPcm(token);
+        return;
     }
-
-    mclog::tagInfo(TAG, "record done");
-
-    // Create audio data  [MIC-L, AEC, MIC-R, MIC-HP]
-    int num_frames = audio_buffer_size / 2;  // 每帧一组 stereo 输出
-    for (int i = 0; i < num_frames; ++i) {
-        int16_t* in  = _rec_test_data.read_buffer;
-        int16_t* out = _rec_test_data.audio_buffer;
-
-        if (_rec_test_data.isDualMic) {
-            out[i * 2 + 0] = in[i * 4 + 0];  // MIC-L
-            out[i * 2 + 1] = in[i * 4 + 2];  // MIC-R
-        } else {
-            out[i * 2 + 0] = in[i * 4 + 3];  // MIC-HP
-            out[i * 2 + 1] = in[i * 4 + 3];  // MIC-HP (duplicate for stereo)
-        }
+    if (!check(token, audio_player_play(file), "Could not queue music")) {
+        fclose(file);  // The library owns the file only after successful enqueue.
+        finishPcm(token);
+        return;
     }
-
-    _rec_test_data.mutex.lock();
-    _rec_test_data.state = hal::HalBase::MIC_TEST_PLAYING;
-    _rec_test_data.mutex.unlock();
-
-    size_t bytes_written = 0;
-    codec_handle->set_volume(_current_speaker_volume);
-    codec_handle->i2s_reconfig_clk_fn(48000, 16, I2S_SLOT_MODE_STEREO);
-
-    mclog::tagInfo(TAG, "start playback");
-    codec_handle->i2s_write(_rec_test_data.audio_buffer, (48000 * 2 * 3) * sizeof(uint16_t), &bytes_written,
-                            portMAX_DELAY);
-    mclog::tagInfo(TAG, "playback done");
-
-    _rec_test_data.mutex.lock();
-    _rec_test_data.state = hal::HalBase::MIC_TEST_IDLE;
-    _rec_test_data.mutex.unlock();
-
-    vTaskDelete(NULL);
-}
-
-static void try_create_rec_test_task(bool isDualMic)
-{
-    _rec_test_data.mutex.lock();
-
-    if (_rec_test_data.state == hal::HalBase::MIC_TEST_IDLE) {
-        _rec_test_data.mutex.unlock();
-        vTaskDelay(pdMS_TO_TICKS(20));
-        _rec_test_data.mutex.lock();
-        if (_rec_test_data.state == hal::HalBase::MIC_TEST_IDLE) {
-            _rec_test_data.isDualMic = isDualMic;
-            _rec_test_data.state     = hal::HalBase::MIC_TEST_RECORDING;
-            xTaskCreate(_rec_test_task, "rec", 4096, nullptr, 5, nullptr);
-            _rec_test_data.mutex.unlock();
-            return;
-        }
+    session.setPhase(token, Phase::Playing);
+    bool stopQueued = false;
+    while (!musicDone.load()) {
+        const auto status = session.snapshot();
+        if ((session.cancelled(token) || !status.lastError.empty()) && !stopQueued)
+            stopQueued = audio_player_stop() == ESP_OK;
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
-
-    _rec_test_data.mutex.unlock();
-    mclog::tagWarn(TAG, "rec test is running");
+    // IDLE is emitted after mute and fclose. No library codec calls remain.
+    finishPcm(token);
 }
 
-void HalEsp32::startDualMicRecordTest()
+hal::HalBase::MicTestState_t micState()
 {
-    try_create_rec_test_task(true);
+    const auto status = session.snapshot();
+    if (!status.busy || (status.operation != Operation::DualMic && status.operation != Operation::HeadphoneMic))
+        return hal::HalBase::MIC_TEST_IDLE;
+    return status.phase == Phase::Recording ? hal::HalBase::MIC_TEST_RECORDING : hal::HalBase::MIC_TEST_PLAYING;
 }
+}  // namespace
 
-hal::HalBase::MicTestState_t HalEsp32::getDualMicRecordTestState()
-{
-    std::lock_guard<std::mutex> lock(_rec_test_data.mutex);
-    return _rec_test_data.state;
-}
-
-void HalEsp32::startHeadphoneMicRecordTest()
-{
-    try_create_rec_test_task(false);
-}
-
-hal::HalBase::MicTestState_t HalEsp32::getHeadphoneMicRecordTestState()
-{
-    std::lock_guard<std::mutex> lock(_rec_test_data.mutex);
-    return _rec_test_data.state;
-}
-
-/* -------------------------------------------------------------------------- */
-/*                               Music play test                              */
-/* -------------------------------------------------------------------------- */
 extern const uint8_t canon_in_d_mp3_start[] asm("_binary_canon_in_d_mp3_start");
 extern const uint8_t canon_in_d_mp3_end[] asm("_binary_canon_in_d_mp3_end");
 extern const uint8_t startup_sfx_mp3_start[] asm("_binary_startup_sfx_mp3_start");
@@ -257,142 +235,102 @@ extern const uint8_t startup_sfx_mp3_end[] asm("_binary_startup_sfx_mp3_end");
 extern const uint8_t shutdown_sfx_mp3_start[] asm("_binary_shutdown_sfx_mp3_start");
 extern const uint8_t shutdown_sfx_mp3_end[] asm("_binary_shutdown_sfx_mp3_end");
 
-enum Mp3PlayTarget_t {
-    MP3_PLAY_TARGET_CANON_IN_D,
-    MP3_PLAY_TARGET_STARTUP_SFX,
-    MP3_PLAY_TARGET_SHUTDOWN_SFX,
-};
-
-struct MusicTestData_t {
-    std::mutex mutex;
-    bool killSignal                      = false;
-    hal::HalBase::MusicPlayState_t state = hal::HalBase::MUSIC_PLAY_IDLE;
-    Mp3PlayTarget_t target               = MP3_PLAY_TARGET_CANON_IN_D;
-};
-static MusicTestData_t _music_test_data;
-
-static esp_err_t audio_mute_function(AUDIO_PLAYER_MUTE_SETTING setting)
+void HalEsp32::setSpeakerVolume(uint8_t value)
 {
-    bsp_codec_config_t* codec_handle = bsp_get_codec_handle();
-    codec_handle->set_mute(setting == AUDIO_PLAYER_MUTE ? true : false);
-    return ESP_OK;
+    volume.store(std::min<uint8_t>(100, value));
+}
+uint8_t HalEsp32::getSpeakerVolume()
+{
+    return volume.load();
+}
+hal::HalBase::AudioStatus HalEsp32::audioGetStatus()
+{
+    return session.snapshot();
+}
+void HalEsp32::audioCancel()
+{
+    session.cancel();
+}
+bool HalEsp32::stopAudioAndWait(uint32_t timeoutMs)
+{
+    return session.stopAndWait(timeoutMs);
+}
+void HalEsp32::resumeAudio()
+{
+    session.resume();
 }
 
-static void audio_player_callback(audio_player_cb_ctx_t* ctx)
+void HalEsp32::audioRecord(std::vector<int16_t>& data, uint16_t durationMs, float gain)
 {
-    mclog::tagInfo(TAG, "audio event: {}", (int)ctx->audio_event);
-
-    audio_player_state_t state = audio_player_get_state();
-    mclog::tagInfo(TAG, "audio state: {}", (int)state);
-
-    if (state == AUDIO_PLAYER_STATE_IDLE) {
-        GetHAL()->stopPlayMusicTest();
-    }
+    const auto token = session.reserve(Operation::Record, Phase::Recording);
+    if (!token) return;
+    if (!recordPcm(token, data, durationMs, gain)) data.clear();
+    session.finish(token);
 }
 
-static void _music_play_task(void* param)
+void HalEsp32::audioPlay(std::vector<int16_t>& data, bool async)
 {
-    bsp_codec_config_t* codec_handle = bsp_get_codec_handle();
-    codec_handle->set_volume(_current_speaker_volume);
-    codec_handle->i2s_reconfig_clk_fn(48000, 16, I2S_SLOT_MODE_STEREO);
-
-    audio_player_config_t config = {
-        .mute_fn    = audio_mute_function,
-        .clk_set_fn = codec_handle->i2s_reconfig_clk_fn,
-        .write_fn   = codec_handle->i2s_write,
-        .priority   = 8,
-        .coreID     = 1,
-    };
-    ESP_ERROR_CHECK(audio_player_new(config));
-    audio_player_callback_register(audio_player_callback, NULL);
-
-    size_t mp3_size = 0;
-    FILE* fp        = nullptr;
-    switch (_music_test_data.target) {
-        case MP3_PLAY_TARGET_CANON_IN_D:
-            mp3_size = (canon_in_d_mp3_end - canon_in_d_mp3_start) - 1;
-            fp       = fmemopen((void*)canon_in_d_mp3_start, mp3_size, "rb");
-            break;
-        case MP3_PLAY_TARGET_STARTUP_SFX:
-            mp3_size = (startup_sfx_mp3_end - startup_sfx_mp3_start) - 1;
-            fp       = fmemopen((void*)startup_sfx_mp3_start, mp3_size, "rb");
-            break;
-        case MP3_PLAY_TARGET_SHUTDOWN_SFX:
-            mp3_size = (shutdown_sfx_mp3_end - shutdown_sfx_mp3_start) - 1;
-            fp       = fmemopen((void*)shutdown_sfx_mp3_start, mp3_size, "rb");
-            break;
-    }
-
-    esp_err_t ret = audio_player_play(fp);
-    if (ret != ESP_OK) {
-        mclog::tagError(TAG, "audio play failed");
-        vTaskDelete(NULL);
+    const auto token = session.reserve(Operation::Tone, Phase::Starting);
+    if (!token) return;
+    if (data.size() > maxPcmSamples) {
+        session.fail(token, "PCM playback exceeds 10 seconds");
+        session.finish(token);
         return;
     }
-
-    while (1) {
-        vTaskDelay(pdMS_TO_TICKS(100));
-
-        std::lock_guard<std::mutex> lock(_music_test_data.mutex);
-        if (_music_test_data.killSignal) {
-            break;
+    auto work = [token, samples = data]() mutable {
+        if (!session.cancelled(token) && prepareOutput(token)) {
+            session.setPhase(token, Phase::Playing);
+            writePcm(token, samples.data(), samples.size() * sizeof(int16_t));
         }
-    }
-
-    ret = audio_player_delete();
-    if (ret != ESP_OK) {
-        mclog::tagError(TAG, "audio player delete failed");
-    }
-
-    _music_test_data.mutex.lock();
-    _music_test_data.state      = hal::HalBase::MUSIC_PLAY_IDLE;
-    _music_test_data.killSignal = false;
-    _music_test_data.mutex.unlock();
-
-    vTaskDelete(NULL);
-}
-
-void try_create_music_play_task(Mp3PlayTarget_t target)
-{
-    if (_music_test_data.state == hal::HalBase::MUSIC_PLAY_IDLE) {
-        _music_test_data.state      = hal::HalBase::MUSIC_PLAY_PLAYING;
-        _music_test_data.target     = target;
-        _music_test_data.killSignal = false;
-        xTaskCreate(_music_play_task, "music", 3000, nullptr, 5, nullptr);
+        finishPcm(token);
+    };
+    if (async) {
+        if (!runner.start("Audio PCM", std::move(work))) session.startFailed(token);
     } else {
-        mclog::tagWarn(TAG, "music play is running");
+        work();
     }
 }
 
+void HalEsp32::startDualMicRecordTest()
+{
+    startWorker(Operation::DualMic, Phase::Recording, [](Token token) { recordTest(token, true); });
+}
+void HalEsp32::startHeadphoneMicRecordTest()
+{
+    startWorker(Operation::HeadphoneMic, Phase::Recording, [](Token token) { recordTest(token, false); });
+}
+hal::HalBase::MicTestState_t HalEsp32::getDualMicRecordTestState()
+{
+    return micState();
+}
+hal::HalBase::MicTestState_t HalEsp32::getHeadphoneMicRecordTestState()
+{
+    return micState();
+}
 void HalEsp32::startPlayMusicTest()
 {
-    std::lock_guard<std::mutex> lock(_music_test_data.mutex);
-    try_create_music_play_task(MP3_PLAY_TARGET_CANON_IN_D);
+    startWorker(Operation::Music, Phase::Starting,
+                [](Token token) { musicPlayback(token, canon_in_d_mp3_start, canon_in_d_mp3_end); });
 }
-
 hal::HalBase::MusicPlayState_t HalEsp32::getMusicPlayTestState()
 {
-    std::lock_guard<std::mutex> lock(_music_test_data.mutex);
-    return _music_test_data.state;
+    const auto status = session.snapshot();
+    return status.busy && (status.operation == Operation::Music || status.operation == Operation::Startup ||
+                           status.operation == Operation::Shutdown)
+               ? MUSIC_PLAY_PLAYING
+               : MUSIC_PLAY_IDLE;
 }
-
 void HalEsp32::stopPlayMusicTest()
 {
-    std::lock_guard<std::mutex> lock(_music_test_data.mutex);
-    _music_test_data.killSignal = true;
+    audioCancel();
 }
-
-/* -------------------------------------------------------------------------- */
-/*                                     SFX                                    */
-/* -------------------------------------------------------------------------- */
 void HalEsp32::playStartupSfx()
 {
-    std::lock_guard<std::mutex> lock(_music_test_data.mutex);
-    try_create_music_play_task(MP3_PLAY_TARGET_STARTUP_SFX);
+    startWorker(Operation::Startup, Phase::Starting,
+                [](Token token) { musicPlayback(token, startup_sfx_mp3_start, startup_sfx_mp3_end); });
 }
-
 void HalEsp32::playShutdownSfx()
 {
-    std::lock_guard<std::mutex> lock(_music_test_data.mutex);
-    try_create_music_play_task(MP3_PLAY_TARGET_SHUTDOWN_SFX);
+    startWorker(Operation::Shutdown, Phase::Starting,
+                [](Token token) { musicPlayback(token, shutdown_sfx_mp3_start, shutdown_sfx_mp3_end); });
 }

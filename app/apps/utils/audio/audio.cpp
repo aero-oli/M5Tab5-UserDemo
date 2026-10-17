@@ -39,7 +39,7 @@ namespace audio {
 
 void play_tone(int frequency, double durationSec)
 {
-    if (GetHAL()->getSpeakerVolume() <= 0) {
+    if (GetHAL()->getSpeakerVolume() <= 0 || GetHAL()->audioGetStatus().busy) {
         return;
     }
 
@@ -69,7 +69,7 @@ void play_tone(int frequency, double durationSec)
 
 void play_melody(const std::vector<int>& midiList, double durationSec = 0.1)
 {
-    if (GetHAL()->getSpeakerVolume() <= 0) {
+    if (GetHAL()->getSpeakerVolume() <= 0 || GetHAL()->audioGetStatus().busy) {
         return;
     }
 
@@ -107,7 +107,7 @@ void play_melody(const std::vector<int>& midiList, double durationSec = 0.1)
 
 void play_tone_from_midi(int midi, double durationSec)
 {
-    if (GetHAL()->getSpeakerVolume() <= 0) {
+    if (GetHAL()->getSpeakerVolume() <= 0 || GetHAL()->audioGetStatus().busy) {
         return;
     }
 
@@ -117,7 +117,7 @@ void play_tone_from_midi(int midi, double durationSec)
 
 void play_random_tone(int semitoneShift = 0, double durationSec = 0.15)
 {
-    if (GetHAL()->getSpeakerVolume() <= 0) {
+    if (GetHAL()->getSpeakerVolume() <= 0 || GetHAL()->audioGetStatus().busy) {
         return;
     }
 
@@ -131,7 +131,7 @@ void play_random_tone(int semitoneShift = 0, double durationSec = 0.15)
 
 void play_next_tone_progression(double durationSec)
 {
-    if (GetHAL()->getSpeakerVolume() <= 0) {
+    if (GetHAL()->getSpeakerVolume() <= 0 || GetHAL()->audioGetStatus().busy) {
         return;
     }
 
@@ -155,7 +155,7 @@ void play_next_tone_progression(double durationSec)
 
 void play_chord(const std::vector<int>& midiNotes, double durationSec)
 {
-    if (GetHAL()->getSpeakerVolume() <= 0) {
+    if (GetHAL()->getSpeakerVolume() <= 0 || GetHAL()->audioGetStatus().busy) {
         return;
     }
 
@@ -188,7 +188,7 @@ void play_chord(const std::vector<int>& midiNotes, double durationSec)
 
 void play_random_chord(int semitoneShift, double durationSec)
 {
-    if (GetHAL()->getSpeakerVolume() <= 0) {
+    if (GetHAL()->getSpeakerVolume() <= 0 || GetHAL()->audioGetStatus().busy) {
         return;
     }
 
@@ -207,7 +207,7 @@ void play_random_chord(int semitoneShift, double durationSec)
 
 void play_next_chord_progression(double durationSec)
 {
-    if (GetHAL()->getSpeakerVolume() <= 0) {
+    if (GetHAL()->getSpeakerVolume() <= 0 || GetHAL()->audioGetStatus().busy) {
         return;
     }
 

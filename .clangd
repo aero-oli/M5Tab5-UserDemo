@@ -1,0 +1,13 @@
+CompileFlags:
+  CompilationDatabase: build/vscode-desktop
+
+Index:
+  Background: Build
+
+Diagnostics:
+  UnusedIncludes: Strict
+
+If:
+  PathMatch: platforms/tab5/.*
+CompileFlags:
+  CompilationDatabase: platforms/tab5/build

@@ -2,21 +2,25 @@
     {
         "url": "https://github.com/Forairaaaaa/mooncake.git",
         "path": "dependencies/mooncake",
-        "branch": "v2.1.0"
+        "branch": "v2.1.0",
+        "commit": "0dfc177b72fcc55095fd222b0bdc69595b001d9f"
     },
     {
         "url": "https://github.com/Forairaaaaa/mooncake_log.git",
         "path": "dependencies/mooncake_log",
-        "branch": "v1.0.0"
+        "branch": "v1.0.0",
+        "commit": "41d00d9d7209668215cea09dbfb0cbac36b5a1c0"
     },
     {
         "url": "https://github.com/lvgl/lvgl.git",
         "path": "dependencies/lvgl",
-        "branch": "v9.2.2"
+        "branch": "v9.2.2",
+        "commit": "7f07a129e8d77f4984fff8e623fd5be18ff42e74"
     },
     {
         "url": "https://github.com/Forairaaaaa/smooth_ui_toolkit.git",
         "path": "dependencies/smooth_ui_toolkit",
-        "branch": "v2.0.0"
+        "branch": "v2.0.0",
+        "commit": "3a749e5b7090c6aba81729cf556b7b88cb42ce54"
     }
 ]

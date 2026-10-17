@@ -131,6 +131,7 @@ public:
     bool isMathOverflow(void);
     bool isAlert(void);
 
+    bool readMeasurements(float& busVoltage, float& busPower, float& shuntVoltage, float& shuntCurrent);
     float readShuntCurrent(void);
     float readShuntVoltage(void);
     float readBusPower(void);
@@ -147,14 +148,16 @@ public:
 private:
     int8_t inaAddress;
     // i2c_bus_device_handle_t ina226_dev;
-    i2c_master_dev_handle_t i2c_dev_handle_ina226;
-    float currentLSB, powerLSB;
+    i2c_master_dev_handle_t i2c_dev_handle_ina226 = nullptr;
+    float currentLSB = 0, powerLSB = 0;
+    bool configured = false, calibrated = false;
     float vShuntMax, vBusMax, rShunt;
 
     void setMaskEnable(uint16_t mask);
 
-    void writeRegister16(uint8_t reg, uint16_t val);
+    bool writeRegister16(uint8_t reg, uint16_t val);
     int16_t readRegister16(uint8_t reg);
+    bool readRegister16(uint8_t reg, int16_t& value);
 };
 
 #ifdef __cplusplus

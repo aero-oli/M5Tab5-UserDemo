@@ -1,0 +1,66 @@
+{
+  "cmake.useCMakePresets": "always",
+  "cmake.configureOnOpen": false,
+  "cmake.buildDirectory": "${workspaceFolder}/build/vscode-desktop",
+  "cmake.configureArgs": [
+    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+  ],
+
+  "C_Cpp.intelliSenseEngine": "disabled",
+
+  "clangd.arguments": [
+    "--background-index",
+    "--completion-style=detailed",
+    "--header-insertion=never",
+    "--query-driver=${env:HOME}/.espressif/tools/**/bin/*gcc,${env:HOME}/.espressif/tools/**/bin/*g++,${env:HOME}/esp/**/bin/*gcc,${env:HOME}/esp/**/bin/*g++"
+  ],
+
+  "idf.espIdfPath": "${env:IDF_PATH}",
+  "idf.buildPath": "${workspaceFolder}/platforms/tab5/build",
+  "idf.sdkconfigFilePath": "${workspaceFolder}/platforms/tab5/sdkconfig",
+  "idf.flashType": "UART",
+  "idf.flashBaudRate": "921600",
+  "idf.monitorEnableTimestamps": true,
+  "idf.saveBeforeBuild": true,
+  "idf.enableCCache": true,
+  "idf.enableSizeTaskAfterBuildTask": true,
+  "idf.notificationMode": "Notifications",
+  "idf.telemetry": false,
+
+  "files.associations": {
+    "*.h": "cpp",
+    "*.hpp": "cpp",
+    "*.hh": "cpp",
+    "*.c": "c",
+    "*.cpp": "cpp",
+    "CMakeLists.txt": "cmake",
+    "Kconfig*": "kconfig",
+    "sdkconfig*": "kconfig"
+  },
+
+  "files.exclude": {
+    "**/.DS_Store": true,
+    "**/build/**": true,
+    "**/platforms/tab5/build/**": true,
+    "**/platforms/tab5/managed_components/**": true
+  },
+
+  "search.exclude": {
+    "**/build/**": true,
+    "**/platforms/tab5/build/**": true,
+    "**/platforms/tab5/managed_components/**": true,
+    "**/dependencies/**": true
+  },
+
+  "files.watcherExclude": {
+    "**/build/**": true,
+    "**/platforms/tab5/build/**": true,
+    "**/platforms/tab5/managed_components/**": true,
+    "**/dependencies/**": true
+  },
+
+  "editor.formatOnSave": false,
+  "editor.rulers": [100],
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true
+}

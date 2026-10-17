@@ -4,11 +4,17 @@
  * SPDX-License-Identifier: MIT
  */
 #include "hal/hal_esp32.h"
-extern "C" {
-#include "utils/rx8130/rx8130.h"
-}
+#include <apps/runtime/performance_telemetry.h>
+#include <hal/profiles/tab5_gpio.h>
+#include <array>
+#include <mutex>
+#include <cmath>
+#include <modules/rtc/rx8130_calendar.h>
 #include <mooncake_log.h>
+#include <cstring>
+#include <functional>
 #include <esp_timer.h>
+#include <driver/i2c_master.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <bsp/m5stack_tab5.h>
@@ -17,6 +23,38 @@ extern "C" {
 extern esp_lcd_touch_handle_t _lcd_touch_handle;
 
 static const std::string _tag = "hal";
+
+static i2c_master_bus_handle_t get_module_i2c_bus(hal::ModuleBus bus)
+{
+    if (bus == hal::ModuleBus::PortA) {
+        return bsp_ext_i2c_get_handle();
+    }
+    return bsp_i2c_get_handle();
+}
+
+static bool with_i2c_device(hal::ModuleBus bus, uint8_t address,
+                            const std::function<esp_err_t(i2c_master_dev_handle_t)>& op)
+{
+    i2c_master_bus_handle_t bus_handle = get_module_i2c_bus(bus);
+    if (bus_handle == nullptr) {
+        return false;
+    }
+
+    i2c_device_config_t dev_cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address  = address,
+        .scl_speed_hz    = 400000,
+    };
+
+    i2c_master_dev_handle_t dev_handle = nullptr;
+    if (i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle) != ESP_OK) {
+        return false;
+    }
+
+    esp_err_t ret = op(dev_handle);
+    i2c_master_bus_rm_device(dev_handle);
+    return ret == ESP_OK;
+}
 
 static void lvgl_read_cb(lv_indev_t* indev, lv_indev_data_t* data)
 {
@@ -74,16 +112,19 @@ void HalEsp32::init()
     imu_init();
 
     mclog::tagInfo(_tag, "ina226 init");
-    ina226.begin(i2c_bus_handle, 0x41);
-    ina226.configure(INA226_AVERAGES_16, INA226_BUS_CONV_TIME_1100US, INA226_SHUNT_CONV_TIME_1100US,
-                     INA226_MODE_SHUNT_BUS_CONT);
-    ina226.calibrate(0.005, 8.192);
-    mclog::tagInfo(_tag, "bus voltage: {}", ina226.readBusVoltage());
+    if (!ina226.begin(i2c_bus_handle, 0x41) ||
+        !ina226.configure(INA226_AVERAGES_16, INA226_BUS_CONV_TIME_1100US, INA226_SHUNT_CONV_TIME_1100US,
+                          INA226_MODE_SHUNT_BUS_CONT) ||
+        !ina226.calibrate(0.005, 8.192)) {
+        publishPowerMonitorError("Power monitor initialization failed");
+        mclog::tagError(_tag, "Power monitor initialization failed");
+    } else {
+        updatePowerMonitorData();
+    }
 
     mclog::tagInfo(_tag, "rx8130 init");
-    rx8130.begin(i2c_bus_handle, 0x32);
-    rx8130.initBat();
-    clearRtcIrq();
+    clearRtcIrq();  // Preserves VLF; initialization is only an explicitly confirmed operation.
+    updateRtcData();
     update_system_time();
 
     mclog::tagInfo(_tag, "display init");
@@ -191,19 +232,33 @@ uint32_t HalEsp32::millis()
 
 int HalEsp32::getCpuTemp()
 {
+    int value = 0;
+    readCpuTemp(value);
+    return value;
+}
+
+bool HalEsp32::readCpuTemp(int& value)
+{
+    // Reopened PM controllers can overlap while an older sample is finishing.
+    static std::mutex mutex;
+    static bool enabled = false;
+    std::lock_guard<std::mutex> lock(mutex);
     if (_temp_sensor == nullptr) {
-        temperature_sensor_config_t temp_sensor_config = {
-            .range_min = 20,
-            .range_max = 100,
-        };
-        temperature_sensor_install(&temp_sensor_config, &_temp_sensor);
-        temperature_sensor_enable(_temp_sensor);
+        temperature_sensor_config_t config = {.range_min = 20, .range_max = 100};
+        if (temperature_sensor_install(&config, &_temp_sensor) != ESP_OK) return false;
     }
-
-    float temp = 0;
-    temperature_sensor_get_celsius(_temp_sensor, &temp);
-
-    return temp;
+    if (!enabled) {
+        if (temperature_sensor_enable(_temp_sensor) != ESP_OK) {
+            if (temperature_sensor_uninstall(_temp_sensor) == ESP_OK) _temp_sensor = nullptr;
+            return false;
+        }
+        enabled = true;
+    }
+    float temperature = 0;
+    if (temperature_sensor_get_celsius(_temp_sensor, &temperature) != ESP_OK || !std::isfinite(temperature))
+        return false;
+    value = static_cast<int>(temperature);
+    return true;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -226,14 +281,28 @@ std::string HalEsp32::getDisplayPanelIc()
     return std::string(bsp_display_get_panel_ic());
 }
 
+namespace {
+thread_local unsigned displayLockDepth   = 0;
+thread_local uint64_t displayLockStartUs = 0;
+thread_local uint64_t displayLockWaitUs  = 0;
+}  // namespace
+
 void HalEsp32::lvglLock()
 {
+    const auto started = app_runtime::monotonicMicros();
     lvgl_port_lock(0);
+    if (displayLockDepth++ == 0) {
+        displayLockStartUs = app_runtime::monotonicMicros();
+        displayLockWaitUs  = displayLockStartUs - started;
+    }
 }
 
 void HalEsp32::lvglUnlock()
 {
+    const bool outer = --displayLockDepth == 0;
+    const auto held  = app_runtime::monotonicMicros() - displayLockStartUs;
     lvgl_port_unlock();
+    if (outer) app_runtime::globalPerformanceTelemetry().recordLock(displayLockWaitUs, held);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -241,95 +310,149 @@ void HalEsp32::lvglUnlock()
 /* -------------------------------------------------------------------------- */
 void HalEsp32::clearRtcIrq()
 {
-    mclog::tagInfo(_tag, "clear rtc irq");
-    rx8130.clearIrqFlags();
-    rx8130.disableIrq();
+    std::lock_guard<std::mutex> lock(_rtcIoMutex);
+    modules::HalI2cDevice device(hal::ModuleBus::MBus, 0x32);
+    rtc::Rx8130Calendar calendar(device);
+    if (!calendar.clearWakeIrq()) mclog::tagError(_tag, "RTC IRQ clear failed: {}", calendar.error());
 }
 
-void HalEsp32::setRtcTime(tm time)
+void HalEsp32::updateRtcData()
 {
-    mclog::tagInfo(_tag, "set rtc time to {}/{}/{} {:02d}:{:02d}:{:02d}", time.tm_year + 1900, time.tm_mon + 1,
-                   time.tm_mday, time.tm_hour, time.tm_min, time.tm_sec);
-    rx8130.setTime(&time);
-    delay(50);
+    std::lock_guard<std::mutex> lock(_rtcIoMutex);
+    auto data = getRtcData();
+    modules::HalI2cDevice device(hal::ModuleBus::MBus, 0x32);
+    rtc::Rx8130Calendar calendar(device);
+    tm actual{};
+    data.valid = calendar.read(actual, data.needsInitialization);
+    data.error = calendar.error();
+    if (data.valid) {
+        data.time        = actual;
+        data.hasSample   = true;
+        data.sampledAtMs = millis();
+    }
+    publishRtcData(data);
+}
 
-    update_system_time();
+bool HalEsp32::setRtcTimeChecked(const tm& time, bool initialize)
+{
+    std::lock_guard<std::mutex> lock(_rtcIoMutex);
+    auto data = getRtcData();
+    modules::HalI2cDevice device(hal::ModuleBus::MBus, 0x32);
+    rtc::Rx8130Calendar calendar(device);
+    tm actual{};
+    data.valid = calendar.set(time, initialize, actual);
+    data.error = calendar.error();
+    if (data.valid) {
+        data.time                = actual;
+        data.hasSample           = true;
+        data.needsInitialization = false;
+        data.sampledAtMs         = millis();
+    }
+    publishRtcData(data);
+    if (data.valid) update_system_time();
+    return data.valid;
 }
 
 void HalEsp32::update_system_time()
 {
-    mclog::tagInfo(_tag, "update system time");
-    struct tm time;
-    rx8130.getTime(&time);
-    mclog::tagInfo(_tag, "sync to rtc time: {}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}", time.tm_year + 1900,
-                   time.tm_mon + 1, time.tm_mday, time.tm_hour, time.tm_min, time.tm_sec);
-    struct timeval now;
-    now.tv_sec  = mktime(&time);
-    now.tv_usec = 0;
-    settimeofday(&now, NULL);
+    const auto data = getRtcData();
+    if (!data.valid) return;
+    tm time = data.time;
+    struct timeval now {
+    };
+    now.tv_sec = mktime(&time);
+    if (now.tv_sec < 0) return;
+    settimeofday(&now, nullptr);
 }
 
 /* -------------------------------------------------------------------------- */
 /*                                   SD Card                                  */
 /* -------------------------------------------------------------------------- */
 #include <dirent.h>
+#include <cerrno>
+#include <hal/sd_scan.h>
 #include <sys/types.h>
 
 bool HalEsp32::isSdCardMounted()
 {
-    return true;
+    return _sdMounted.load();
 }
 
-std::vector<hal::HalBase::FileEntry_t> HalEsp32::scanSdCard(const std::string& dirPath)
+hal::HalBase::SdScanResult HalEsp32::scanSdCardResult(const std::string& dirPath)
 {
-    std::vector<hal::HalBase::FileEntry_t> file_entries;
-
-    mclog::tagInfo(_tag, "init sd card");
-    if (bsp_sdcard_init("/sd", 25) != ESP_OK) {
-        mclog::error("failed to mount sd card");
-        return file_entries;
-    }
-
-    std::string target_path = "/sd/" + dirPath;
-
-    DIR* dir = opendir(target_path.c_str());
-    if (dir == nullptr) {
-        mclog::error("failed to open directory: {}", target_path);
-        return file_entries;
-    }
-
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != nullptr) {
-        if (std::string(entry->d_name) == "." || std::string(entry->d_name) == "..") {
-            continue;
-        }
-
-        hal::HalBase::FileEntry_t file_entry;
-        file_entry.name  = entry->d_name;
-        file_entry.isDir = (entry->d_type == DT_DIR);
-        file_entries.push_back(file_entry);
-    }
-
-    closedir(dir);
-
-    mclog::tagInfo(_tag, "deinit sd card");
-    bsp_sdcard_deinit("/sd");
-
-    return file_entries;
+    static std::mutex mutex;
+    std::lock_guard<std::mutex> lock(mutex);
+    return hal::scanSdCardSession(
+        [&] {
+            const auto error = bsp_sdcard_init("/sd", 25);
+            if (error != ESP_OK)
+                return SdScanResult{
+                    SdScanStatus::MountFailed, {}, std::string("Could not mount SD card: ") + esp_err_to_name(error)};
+            _sdMounted.store(true);
+            return SdScanResult{SdScanStatus::Success, {}, {}};
+        },
+        [&] {
+            SdScanResult result{SdScanStatus::Success, {}, {}};
+            const auto path = std::string("/sd/") + dirPath;
+            DIR* dir        = opendir(path.c_str());
+            if (!dir) return SdScanResult{SdScanStatus::ReadFailed, {}, "Could not open SD directory"};
+            for (;;) {
+                errno       = 0;
+                auto* entry = readdir(dir);
+                if (!entry) {
+                    if (errno) result = {SdScanStatus::ReadFailed, {}, "Could not read SD directory"};
+                    break;
+                }
+                const std::string name = entry->d_name;
+                if (name == "." || name == "..") continue;
+                if (!hal::appendSdEntry(result, {name, entry->d_type == DT_DIR})) break;
+            }
+            if (closedir(dir) != 0) result = {SdScanStatus::ReadFailed, {}, "Could not close SD directory"};
+            return result;
+        },
+        [&] {
+            const bool ok = bsp_sdcard_deinit("/sd") == ESP_OK;
+            if (ok) _sdMounted.store(false);
+            return ok;
+        });
 }
 
 /* -------------------------------------------------------------------------- */
 /*                                  Interface                                 */
 /* -------------------------------------------------------------------------- */
+void HalEsp32::updateInterfaceData()
+{
+    std::lock_guard<std::mutex> ioLock(_interfaceIoMutex);
+    bool usbC         = false;
+    bool headphone    = false;
+    const auto result = bsp_read_interface_status(&usbC, &headphone);
+    if (result != ESP_OK) {
+        publishInterfaceError(std::string("Interface read failed: ") + esp_err_to_name(result));
+        return;
+    }
+    InterfaceData data;
+    data.usbC           = usbC;
+    data.headphone      = headphone;
+    data.usbCKnown      = true;
+    data.headphoneKnown = true;
+    // HID-host events cannot establish general USB-A port presence.
+    data.usbAKnown   = false;
+    data.valid       = true;
+    data.hasSample   = true;
+    data.sampledAtMs = millis();
+    publishInterfaceData(data);
+}
+
 bool HalEsp32::usbCDetect()
 {
-    return bsp_usb_c_detect();
-    // return false;
+    const auto data = getInterfaceData();
+    return data.valid && data.usbCKnown && data.usbC;
 }
 
 bool HalEsp32::headPhoneDetect()
 {
-    return bsp_headphone_detect();
+    const auto data = getInterfaceData();
+    return data.valid && data.headphoneKnown && data.headphone;
 }
 
 std::vector<uint8_t> HalEsp32::i2cScan(bool isInternal)
@@ -360,6 +483,37 @@ std::vector<uint8_t> HalEsp32::i2cScan(bool isInternal)
     return addrs;
 }
 
+bool HalEsp32::i2cProbe(hal::ModuleBus bus, uint8_t address)
+{
+    i2c_master_bus_handle_t bus_handle = get_module_i2c_bus(bus);
+    if (bus_handle == nullptr) {
+        return false;
+    }
+    return i2c_master_probe(bus_handle, address, 50) == ESP_OK;
+}
+
+bool HalEsp32::i2cReadRegister(hal::ModuleBus bus, uint8_t address, uint8_t reg, uint8_t* buffer, size_t length)
+{
+    return with_i2c_device(bus, address, [&](i2c_master_dev_handle_t dev_handle) {
+        return i2c_master_transmit_receive(dev_handle, &reg, 1, buffer, length, 100);
+    });
+}
+
+bool HalEsp32::i2cWriteRegister(hal::ModuleBus bus, uint8_t address, uint8_t reg, const uint8_t* data, size_t length)
+{
+    uint8_t write_buffer[17] = {};
+    if (length + 1 > sizeof(write_buffer)) {
+        return false;
+    }
+
+    write_buffer[0] = reg;
+    memcpy(&write_buffer[1], data, length);
+
+    return with_i2c_device(bus, address, [&](i2c_master_dev_handle_t dev_handle) {
+        return i2c_master_transmit(dev_handle, write_buffer, length + 1, 100);
+    });
+}
+
 void HalEsp32::initPortAI2c()
 {
     mclog::tagInfo(_tag, "init port a i2c");
@@ -372,18 +526,88 @@ void HalEsp32::deinitPortAI2c()
     bsp_ext_i2c_deinit();
 }
 
-void HalEsp32::gpioInitOutput(uint8_t pin)
+namespace {
+std::mutex s_gpioMutex;
+std::array<hal::GpioOutputState, 55> s_gpioOutputs;
+}  // namespace
+
+std::vector<hal::GpioPinInfo> HalEsp32::gpioGetPins()
 {
-    gpio_set_pull_mode((gpio_num_t)pin, GPIO_PULLUP_ONLY);
-    gpio_set_direction((gpio_num_t)pin, GPIO_MODE_OUTPUT);
+    auto pins = hal::tab5ExpansionPins();
+#if CONFIG_ESP_CONSOLE_UART_DEFAULT || CONFIG_ESP_CONSOLE_UART_CUSTOM
+    for (auto& pin : pins) {
+#if CONFIG_ESP_CONSOLE_UART_DEFAULT
+        const bool consolePin = pin.pin == 37 || pin.pin == 38;
+#else
+        const bool consolePin =
+            pin.pin == CONFIG_ESP_CONSOLE_UART_TX_GPIO || pin.pin == CONFIG_ESP_CONSOLE_UART_RX_GPIO;
+#endif
+        if (consolePin) {
+            pin.outputAllowed = false;
+            pin.reservation   = "Serial console";
+        }
+    }
+#endif
+    return pins;
 }
 
-void HalEsp32::gpioSetLevel(uint8_t pin, bool level)
+hal::GpioClaimResult HalEsp32::gpioInitOutput(uint8_t pin)
 {
-    gpio_set_level((gpio_num_t)pin, level);
+    std::lock_guard<std::mutex> lock(s_gpioMutex);
+    if (pin >= s_gpioOutputs.size() || !hal::gpioOutputAllowed(gpioGetPins(), pin) || s_gpioOutputs[pin].claimed) {
+        return hal::GpioClaimResult::Rejected;
+    }
+    auto& state   = s_gpioOutputs[pin];
+    state.claimed = true;
+    // Set the output latch before enabling drive to avoid briefly driving a previous high level.
+    gpio_config_t config = {};
+    config.pin_bit_mask  = 1ULL << pin;
+    config.mode          = GPIO_MODE_OUTPUT;
+    config.pull_up_en    = GPIO_PULLUP_DISABLE;
+    config.pull_down_en  = GPIO_PULLDOWN_DISABLE;
+    config.intr_type     = GPIO_INTR_DISABLE;
+    state.levelKnown     = gpio_set_level(static_cast<gpio_num_t>(pin), 0) == ESP_OK && gpio_config(&config) == ESP_OK;
+    state.high           = false;
+    return state.levelKnown ? hal::GpioClaimResult::Claimed : hal::GpioClaimResult::Unknown;
 }
 
-void HalEsp32::gpioReset(uint8_t pin)
+bool HalEsp32::gpioSetLevel(uint8_t pin, bool level)
 {
-    gpio_set_level((gpio_num_t)pin, false);
+    std::lock_guard<std::mutex> lock(s_gpioMutex);
+    if (pin >= s_gpioOutputs.size() || !hal::gpioOutputAllowed(gpioGetPins(), pin) || !s_gpioOutputs[pin].claimed ||
+        !s_gpioOutputs[pin].levelKnown) {
+        return false;
+    }
+    auto& state      = s_gpioOutputs[pin];
+    state.levelKnown = gpio_set_level(static_cast<gpio_num_t>(pin), level) == ESP_OK;
+    if (state.levelKnown) {
+        state.high = level;
+    }
+    return state.levelKnown;
+}
+
+bool HalEsp32::gpioReset(uint8_t pin)
+{
+    std::lock_guard<std::mutex> lock(s_gpioMutex);
+    if (pin >= s_gpioOutputs.size() || !hal::gpioOutputAllowed(gpioGetPins(), pin) || !s_gpioOutputs[pin].claimed) {
+        return false;
+    }
+    gpio_config_t config = {};
+    config.pin_bit_mask  = 1ULL << pin;
+    config.mode          = GPIO_MODE_INPUT;
+    config.pull_up_en    = GPIO_PULLUP_DISABLE;
+    config.pull_down_en  = GPIO_PULLDOWN_DISABLE;
+    config.intr_type     = GPIO_INTR_DISABLE;
+    if (gpio_config(&config) != ESP_OK) {
+        s_gpioOutputs[pin].levelKnown = false;
+        return false;
+    }
+    s_gpioOutputs[pin] = {};
+    return true;
+}
+
+hal::GpioOutputState HalEsp32::gpioGetOutputState(uint8_t pin)
+{
+    std::lock_guard<std::mutex> lock(s_gpioMutex);
+    return pin < s_gpioOutputs.size() ? s_gpioOutputs[pin] : hal::GpioOutputState{};
 }
