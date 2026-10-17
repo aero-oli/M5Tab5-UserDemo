@@ -510,3 +510,12 @@ set_tests_properties(desktop_hardware_read_failure_ui_tests PROPERTIES TIMEOUT 3
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME fetch_repos_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_fetch_repos.py)
 set_tests_properties(fetch_repos_tests PROPERTIES TIMEOUT 30)
+
+# UI journeys assert short callback latency; concurrent full SDL simulations
+# measure host CPU contention instead. Keep those journeys mutually exclusive.
+get_property(tab5_project_tests DIRECTORY PROPERTY TESTS)
+foreach(tab5_test IN LISTS tab5_project_tests)
+    if(tab5_test MATCHES "^desktop_.*_tests$")
+        set_tests_properties(${tab5_test} PROPERTIES RESOURCE_LOCK desktop_ui)
+    endif()
+endforeach()

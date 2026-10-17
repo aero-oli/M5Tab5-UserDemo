@@ -208,5 +208,23 @@ injected pump of the runtime's existing LVGL timer. Runtime shutdown ownership r
 New development should follow [the extension contract](EXTENDING.md). Use [the release checklist](RELEASE_CHECKLIST.md)
 to record the actual board, recovery backup, partition/bootloader identity, controlled electrical
 checks, radio/OTA interruption and rollback, wake behavior, visible latency and soak measurements.
-Those device gates remain pending because no hardware is connected. No firmware has been flashed,
-no remote CI run has been claimed, and no changes have been pushed during stabilization.
+Those device gates remain pending because no hardware is connected. At the initial local gate, no firmware had been flashed and the branch had not yet been published.
+Publication and hosted CI follow-up are recorded below.
+
+## Publication and CI follow-up
+
+The stabilization branch is published on `aero-oli/M5Tab5-UserDemo` with
+[upstream PR #19](https://github.com/m5stack/M5Tab5-UserDemo/pull/19). Current upstream main
+(`b4e356b`) was merged without restoring retired launcher panels. ST7121 display support and
+LCD reset pin handling are retained. The C6 duplicate-AP-event fix is adapted to the synchronized
+network owner, including checked startup and stop-before-publication handling. Focused synthetic
+AP event-order checks pass; they do not establish real radio timing or electrical behavior.
+
+The first hosted run passed the complete Linux desktop suite and compiled firmware. Its final
+firmware lockfile check failed because Git did not trust the container-mounted checkout. The
+workflow now trusts only `$GITHUB_WORKSPACE` in that ephemeral container. Desktop UI journeys
+hold a CTest resource lock so their callback-latency assertions cannot compete with multiple SDL
+simulations; controller/driver tests remain parallelizable. Current hosted results are linked from
+[the fork's build workflow](https://github.com/aero-oli/M5Tab5-UserDemo/actions/workflows/build.yml).
+
+Hardware testing remains deferred until the user connects the Tab5. No firmware has been flashed.
