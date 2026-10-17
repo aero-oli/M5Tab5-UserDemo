@@ -88,6 +88,10 @@ public:
     {
         return 0;
     }
+    virtual std::string getDisplayPanelIc()
+    {
+        return "Unknown";
+    }
 
     /* ---------------------------------- Lvgl ---------------------------------- */
     lv_indev_t* lvTouchpad = nullptr;

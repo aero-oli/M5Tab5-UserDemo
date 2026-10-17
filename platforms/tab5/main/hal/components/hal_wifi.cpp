@@ -14,6 +14,9 @@
 #include <esp_http_client.h>
 #include <esp_crt_bundle.h>
 #include <esp_netif.h>
+#include <esp_wifi_default.h>
+#include <esp_wifi_netif.h>
+#include <esp_private/wifi.h>
 #include <esp_ota_ops.h>
 #include <esp_app_format.h>
 #include <esp_app_desc.h>
@@ -36,17 +39,27 @@ using OtaState = hal::HalBase::OtaState;
 hal::NetworkState state;
 std::atomic<bool> commandBusy {false};
 std::atomic<uint64_t> stoppedEvents {0};
+std::atomic<uint64_t> stoppedApEvents {0};
 app_runtime::AsyncJobRunner otaRunner;
 app_runtime::AsyncJobRunner restoreRunner;
 bool ready = false;
 bool started = false; // Command lease owns all SDK configuration/server access.
+bool startedAp = false;
 bool stopPending = false;
 uint64_t stopBoundary = 0;
+bool stopWasAp = false;
 esp_netif_t* staNetif = nullptr;
 esp_netif_t* apNetif = nullptr;
 httpd_handle_t server = nullptr;
 esp_event_handler_instance_t wifiHandler = nullptr;
 esp_event_handler_instance_t ipHandler = nullptr;
+esp_event_handler_instance_t apStartHandler = nullptr;
+esp_event_handler_instance_t apStopHandler = nullptr;
+// Only the event-loop owner touches this flag. Commands communicate through atomics.
+bool apNetifStarted = false;
+std::atomic<bool> apWanted {false};
+std::atomic<bool> apStopExpected {false};
+std::atomic<int> apStartResult {0}; // 0 pending, 1 ready, -1 failed.
 constexpr const char* apSsid = "M5Tab5-UserDemo-WiFi";
 uint32_t nowMs() { return static_cast<uint32_t>(esp_timer_get_time() / 1000); }
 void pauseMs(uint32_t ms) { vTaskDelay(pdMS_TO_TICKS(ms)); }
@@ -72,6 +85,82 @@ bool checkWifi(esp_err_t result, const char* action)
     wifiError(std::string(action) + ": " + esp_err_to_name(result));
     return false;
 }
+// Updated C6 firmware may repeat AP events. Never invoke the netif start/stop
+// action twice: the default AP start action is not idempotent.
+void remoteApStart(void* arg, esp_event_base_t base, int32_t id, void* data)
+{
+    auto* netif = static_cast<esp_netif_t*>(arg);
+    if (!apWanted.load() || apNetifStarted || esp_netif_is_netif_up(netif)) return;
+    apNetifStarted = true; // Also retain ownership if any subsequent setup fails.
+    auto fail = [](esp_err_t result, const char* operation) {
+        if (checkWifi(result, operation)) return false;
+        apStartResult.store(-1);
+        return true;
+    };
+    auto driver = static_cast<wifi_netif_driver_t>(esp_netif_get_io_driver(netif));
+    uint8_t mac[6];
+    if (fail(esp_wifi_get_if_mac(driver, mac), "AP MAC read failed")) return;
+    if (esp_wifi_is_if_ready_when_started(driver) &&
+        fail(esp_wifi_register_if_rxcb(driver, esp_netif_receive, netif), "AP receive registration failed")) return;
+    if (fail(esp_wifi_internal_reg_netstack_buf_cb(esp_netif_netstack_buf_ref, esp_netif_netstack_buf_free),
+             "AP network buffer registration failed") ||
+        fail(esp_netif_set_mac(netif, mac), "AP MAC setup failed")) return;
+    esp_netif_action_start(netif, base, id, data);
+    if (!esp_netif_is_netif_up(netif)) {
+        wifiError("AP network interface did not start");
+        apStartResult.store(-1);
+        return;
+    }
+    apStartResult.store(1);
+}
+void remoteApStop(void* arg, esp_event_base_t base, int32_t id, void* data)
+{
+    auto* netif = static_cast<esp_netif_t*>(arg);
+    if (!apStopExpected.load() && !apNetifStarted && !esp_netif_is_netif_up(netif)) return;
+    if (apNetifStarted || esp_netif_is_netif_up(netif)) {
+        esp_netif_action_stop(netif, base, id, data);
+        if (esp_netif_is_netif_up(netif)) {
+            wifiError("AP network interface did not stop");
+            return; // Retain ownership and the pending transition boundary.
+        }
+    }
+    apNetifStarted = false;
+    if (apStopExpected.exchange(false)) {
+        stoppedApEvents.fetch_add(1); // Publish only after accepted netif teardown.
+    } else {
+        apWanted.store(false);
+        state.update([](auto& value) {
+            if (value.wifi.mode != Mode::AccessPoint) return;
+            value.wifi.state = State::Failed;
+            value.wifi.ipAddress.clear();
+            value.wifi.lastError = "Access point stopped unexpectedly";
+        });
+    }
+}
+bool ensureRemoteApNetif()
+{
+    if (!apNetif) {
+        esp_netif_config_t config = ESP_NETIF_DEFAULT_WIFI_AP();
+        auto* netif = esp_netif_new(&config);
+        if (!netif) { wifiError("Could not allocate AP interface"); return false; }
+        // The default STA constructor registers AP handlers too. Avoid the SDK's
+        // global default AP pointer so those handlers cannot bypass our guards.
+        auto driver = esp_wifi_create_if_driver(WIFI_IF_AP);
+        if (!driver) { esp_netif_destroy(netif); wifiError("Could not allocate AP driver"); return false; }
+        if (!checkWifi(esp_netif_attach(netif, driver), "AP driver attachment failed")) {
+            esp_wifi_destroy_if_driver(driver);
+            esp_netif_destroy(netif);
+            return false;
+        }
+        apNetif = netif;
+    }
+    // Retain successful registrations on failure; retries cannot duplicate handlers.
+    if (!apStartHandler && !checkWifi(esp_event_handler_instance_register(WIFI_EVENT, WIFI_EVENT_AP_START,
+            remoteApStart, apNetif, &apStartHandler), "AP start registration failed")) return false;
+    if (!apStopHandler && !checkWifi(esp_event_handler_instance_register(WIFI_EVENT, WIFI_EVENT_AP_STOP,
+            remoteApStop, apNetif, &apStopHandler), "AP stop registration failed")) return false;
+    return true;
+}
 void setIdle()
 {
     state.update([](auto& value) {
@@ -88,7 +177,7 @@ std::string apName(const wifi_ap_record_t& ap)
 }
 void eventHandler(void*, esp_event_base_t base, int32_t id, void* data)
 {
-    if (base == WIFI_EVENT && (id == WIFI_EVENT_STA_STOP || id == WIFI_EVENT_AP_STOP)) {
+    if (base == WIFI_EVENT && id == WIFI_EVENT_STA_STOP) {
         stoppedEvents.fetch_add(1);
         return;
     }
@@ -132,7 +221,7 @@ bool ensureWifi()
     result = esp_event_loop_create_default();
     if (result != ESP_OK && result != ESP_ERR_INVALID_STATE) return checkWifi(result, "Event loop initialization failed");
     if (!staNetif) staNetif = esp_netif_create_default_wifi_sta();
-    if (!apNetif) apNetif = esp_netif_create_default_wifi_ap();
+    if (!ensureRemoteApNetif()) return false;
     if (!staNetif || !apNetif) { wifiError("Could not create Wi-Fi interfaces"); return false; }
     wifi_init_config_t config = WIFI_INIT_CONFIG_DEFAULT();
     result = esp_wifi_init(&config);
@@ -168,7 +257,10 @@ bool stopForTransition()
     state.stopStationIntent();
     stopServer();
     if (started) {
-        stopBoundary = stoppedEvents.load();
+        stopWasAp = startedAp;
+        apWanted.store(false);
+        stopBoundary = stopWasAp ? stoppedApEvents.load() : stoppedEvents.load();
+        apStopExpected.store(stopWasAp);
         if (!checkWifi(esp_wifi_stop(), "Wi-Fi stop failed")) return false;
         started = false;
         stopPending = true;
@@ -177,9 +269,12 @@ bool stopForTransition()
     const auto began = nowMs();
     // Driver STOP and default-netif teardown form a boundary before a new intent.
     // Keep the pending boundary on timeout: a retry cannot start over stale STOP.
-    while (stoppedEvents.load() == stopBoundary && nowMs() - began < 2000) pauseMs(5);
-    if (stoppedEvents.load() == stopBoundary) { wifiError("Wi-Fi stop event timed out"); return false; }
+    const auto stoppedCount = [] { return stopWasAp ? stoppedApEvents.load() : stoppedEvents.load(); };
+    while (stoppedCount() == stopBoundary && nowMs() - began < 2000) pauseMs(5);
+    if (stoppedCount() == stopBoundary) { wifiError("Wi-Fi stop event timed out"); return false; }
     stopPending = false;
+    startedAp = false;
+    apStartResult.store(0);
     return true;
 }
 bool saveCredentials(const std::string& ssid, const std::string& password)
@@ -438,14 +533,40 @@ bool HalEsp32::wifiStartAccessPoint()
     config.ap.max_connection = 4;
     config.ap.authmode = WIFI_AUTH_OPEN;
     if (!checkWifi(esp_wifi_set_mode(WIFI_MODE_AP), "AP mode failed") ||
-        !checkWifi(esp_wifi_set_config(WIFI_IF_AP, &config), "AP configuration failed") ||
-        !checkWifi(esp_wifi_start(), "AP start failed")) return false;
+        !checkWifi(esp_wifi_set_config(WIFI_IF_AP, &config), "AP configuration failed")) return false;
+    apStartResult.store(0);
+    apWanted.store(true);
+    apStopExpected.store(false);
+    if (!checkWifi(esp_wifi_start(), "AP start failed")) {
+        apWanted.store(false);
+        apStopExpected.store(false);
+        return false;
+    }
     started = true;
+    startedAp = true;
+    const auto began = nowMs();
+    while (apStartResult.load() == 0 && nowMs() - began < 2000) pauseMs(5);
+    if (apStartResult.load() != 1) {
+        if (apStartResult.load() == 0) wifiError("AP start event timed out");
+        stopForTransition();
+        return false;
+    }
     if (!startServer()) { stopForTransition(); return false; }
-    state.update([](auto& value) {
+    bool published = false;
+    state.update([&](auto& value) {
+        // STOP clears intent before taking this same snapshot lock. Either we
+        // observe it here, or its following update invalidates our AP state.
+        if (!apWanted.load()) {
+            value.wifi.state = State::Failed;
+            value.wifi.ipAddress.clear();
+            value.wifi.lastError = "AP stopped during startup";
+            return;
+        }
         value.wifi.mode = Mode::AccessPoint; value.wifi.state = State::ApRunning;
         value.wifi.ssid = apSsid; value.wifi.ipAddress = "192.168.4.1"; value.wifi.lastError.clear();
+        published = true;
     });
+    if (!published) { stopForTransition(); return false; }
     outcome.success = true;
     return true;
 }
