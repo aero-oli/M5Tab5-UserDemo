@@ -102,7 +102,7 @@ private:
 
         auto* panel = app_ui::makePanel(content(), layout.infoPanel.x, layout.infoPanel.y, layout.infoPanel.w,
                                         layout.infoPanel.h);
-        auto* info = app_ui::makeLabel(panel, "Changes apply immediately and are clamped to 0-100%.",
+        auto* info = app_ui::makeLabel(panel, "Brightness: 5-100%. Volume: 0-100%. Use Power > Screen Off for touch wake.",
                                        layout.infoText.x, layout.infoText.y, &lv_font_montserrat_18,
                                        app_ui::theme::color(app_ui::theme::muted));
         lv_obj_set_width(info, layout.infoText.w);

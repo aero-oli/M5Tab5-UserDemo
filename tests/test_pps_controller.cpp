@@ -1,4 +1,5 @@
 #include <apps/app_pps/pps_controller.h>
+#include <apps/runtime/async_job_runner.h>
 #include <atomic>
 #include <cassert>
 #include <chrono>
@@ -11,7 +12,8 @@
 #include <vector>
 
 // Injected devices keep these tests independent of a real HAL instance.
-hal::HalBase* hal::Get() { return nullptr; }
+static hal::HalBase* testHal = nullptr;
+hal::HalBase* hal::Get() { return testHal; }
 
 using app_pps::OutputState;
 using app_pps::PpsController;
@@ -355,6 +357,54 @@ static void failed_initial_off_keeps_controls_locked()
     assert(!fixture.controller->setOutputEnabled(true, 400));
 }
 
+static void failed_off_remains_visible_after_close_and_can_be_retried()
+{
+    struct TestHal : hal::HalBase {
+        Device device;
+        uint32_t millis() override { return 500; }
+        bool i2cProbe(hal::ModuleBus, uint8_t) override { return device.probe(); }
+        bool i2cReadRegister(hal::ModuleBus, uint8_t, uint8_t reg, uint8_t* data, size_t size) override
+        { return device.readRegister(reg, data, size); }
+        bool i2cWriteRegister(hal::ModuleBus, uint8_t, uint8_t reg, const uint8_t* data, size_t size) override
+        { return device.writeRegister(reg, data, size); }
+    } hal;
+    testHal = &hal;
+    assert(!PpsController::backgroundState());
+    auto controller = std::make_unique<PpsController>();
+    controller->update(500);
+    eventually([&] { return PpsController::canEnable(controller->state()); });
+    assert(controller->setOutputEnabled(true, 500));
+    eventually([&] { return !controller->state().commandPending; });
+    assert(hal.device.enabled());
+    hal.device.block(pps::REG_MODULE_ENABLE, true);
+    controller.reset();
+    hal.device.awaitBlocked();
+    assert(PpsController::backgroundState()->off == app_pps::OffState::Pending);
+    {
+        std::lock_guard<std::mutex> lock(hal.device.mutex);
+        hal.device.failWrite = pps::REG_MODULE_ENABLE;
+    }
+    hal.device.release();
+    eventually([&] { return !PpsController::backgroundState()->commandPending; });
+    assert(hal.device.enabled());
+    assert(PpsController::backgroundState()->off == app_pps::OffState::Unconfirmed);
+    assert(PpsController::outputSummary(*PpsController::backgroundState()) == "OFF UNCONFIRMED");
+    controller = std::make_unique<PpsController>();
+    assert(controller->state().off == app_pps::OffState::Unconfirmed);
+    {
+        std::lock_guard<std::mutex> lock(hal.device.mutex);
+        hal.device.failWrite = -1;
+    }
+    controller->emergencyOff(500);
+    eventually([&] { return !controller->state().commandPending; });
+    assert(!hal.device.enabled());
+    assert(controller->state().off == app_pps::OffState::Confirmed);
+    controller.reset();
+    PpsController::shutdown();
+    assert(app_runtime::AsyncJobRunner::waitForAll(5000));
+    testHal = nullptr;
+}
+
 int main()
 {
     initial_connection_disables_output_and_rejects_wrong_identity();
@@ -364,4 +414,6 @@ int main()
     emergency_off_interrupts_poll_without_waiting_on_caller();
     close_cancels_queued_enable_and_keeps_worker_resources_alive();
     failed_initial_off_keeps_controls_locked();
+    failed_off_remains_visible_after_close_and_can_be_retried();
+    assert(app_runtime::AsyncJobRunner::waitForAll(5000));
 }

@@ -33,6 +33,10 @@ public:
     void stopCameraCapture() override;
     CameraStatus cameraGetStatus() override;
 
+    AudioStatus audioGetStatus() override;
+    void audioCancel() override;
+    bool stopAudioAndWait(uint32_t timeoutMs) override;
+    void resumeAudio() override;
     void setSpeakerVolume(uint8_t volume) override;
     uint8_t getSpeakerVolume() override;
     void audioPlay(std::vector<int16_t>& data, bool async = true) override;
@@ -44,6 +48,8 @@ public:
     void startPlayMusicTest() override;
     MusicPlayState_t getMusicPlayTestState() override;
     void stopPlayMusicTest() override;
+    void playStartupSfx() override;
+    void playShutdownSfx() override;
 
     void updatePowerMonitorData() override;
     void setChargeQcEnable(bool enable) override;

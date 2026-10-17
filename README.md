@@ -96,6 +96,9 @@ Camera capture reports Starting/Running/Stopping/Failed states from the HAL rath
 `stopCameraCapture()` detaches the LVGL target before returning; app views can then be destroyed while hardware
 cleanup finishes. A new capture cannot start until that cleanup completes. Tab5 previews use separate render/display
 buffers, preserve the source aspect ratio, and fail visibly if no frame arrives within two seconds.
+If capture start/stop cannot prove DMA has stopped, its driver resources are retained and camera restart is disabled
+until reboot. Failed scaler release similarly retains its preview buffers. Process teardown waits outside the display
+lock for capture cleanup; a timeout prevents HAL destruction.
 
 Desktop camera smoke tests check animated preview pixels, repeated start/stop, closing during capture and before the
 first frame, resource cleanup, and recovery from faults. Set `M5TAB5_DESKTOP_CAMERA_FAIL` to `start`, `frame`, or `stall`
@@ -107,6 +110,8 @@ Apply requires confirmed output-off and verifies both setpoint registers; Enable
 writes until a successful reapply. Emergency Off takes priority over queued commands and interrupts polling between
 register transactions. Back cancels queued Apply/Enable and requests output-off asynchronously for an identified PPS; communication failure
 can still leave the physical output live, so this is not a substitute for a hardware disconnect.
+Home retains pending/off-unconfirmed warnings after Back. Reopening PPS permits an off retry; only successful
+hardware readback clears the off failure. Successful old readback still becomes Unknown when telemetry is stale.
 
 GPIO diagnostics are opt-in: opening the app never configures or drives a pin. Drive Low claims one permitted
 expansion pin before its level toggle unlocks. Release, Release All, and Back return only this app's claimed pins
@@ -132,8 +137,19 @@ stream to wake the display after a fresh press and consumes that gesture until r
 There is no second touch-reader task or indefinite LVGL lock. Timed Sleep accepts 1-60 minutes and configures the
 RX8130CE relative wake timer with readback verification; it never changes clock/calendar registers. Motion wake
 disable is also verified before shutdown preparation.
+Ordinary brightness adjustment is limited to 5-100%; zero is reserved for Screen Off. BMI270 initialization reuses
+one device handle and serializes driver access. Returned power failures attempt RTC cancellation and restore normal
+IMU sampling, reporting rollback failures alongside the original error.
 
-Audio has a two-second stop deadline. If the power-off signal returns and the device is still running after 1.5 seconds,
+Tones, music and microphone tests share one codec owner. Stop/Back requests cancellation without waiting on the UI;
+errors are visible and task-start failures release the reservation. Audio transfers check driver results in chunks;
+the installed Tab5 codec driver has a one-second IO timeout. Power preparation stops all audio with a two-second
+deadline; a timeout retains ownership until real completion. The MP3 player remains allocated for the process lifetime
+because its vendor delete path does not guarantee its task has stopped before freeing memory.
+Playback and capture reconfigure both codec directions together for the bundled 44.1 kHz music and 48 kHz
+four-channel recording. Zero volume remains muted across those transitions. The installed codec library discards
+some low-level mute/volume write errors, so successful API returns alone do not verify those physical register writes.
+If the power-off signal returns and the device is still running after 1.5 seconds,
 the controller reports failure, disarms wake sources where possible, and restores the display. External PPS/module
 outputs can remain live independently; confirmation warns about that and does not silently change those outputs.
 Desktop simulates these actions without powering off the host. Set `M5TAB5_DESKTOP_POWER_FAIL=1` for a recoverable
@@ -143,7 +159,8 @@ still require acceptance on Tab5.
 
 Desktop PPS tests cover startup, communication loss, reconnection, partial writes, readback mismatch, concurrent edits,
 Emergency Off during a blocked poll, and closing during a queued command. `M5TAB5_DESKTOP_PPS_ABSENT=1` exercises
-the missing-device UI. Actual off latency, load behaviour, and failed-communication safety still require Tab5/PPS tests.
+the missing-device UI. Smoke journeys also inject a failed off write and verify the warning survives on Home.
+Actual off latency, load behaviour, and failed-communication safety still require Tab5/PPS tests.
 
 ## Acknowledgments
 

@@ -8,8 +8,10 @@ int main()
     using app_media_audio::AudioToolKind;
 
     int dualStarts = 0;
+    int dualStops = 0;
     app_media_audio::AudioToolCallbacks dualCallbacks;
     dualCallbacks.start = [&]() { ++dualStarts; };
+    dualCallbacks.stop = [&]() { ++dualStops; };
     dualCallbacks.micState = [] { return hal::HalBase::MIC_TEST_RECORDING; };
     AudioToolController dual(AudioToolKind::DualMic, dualCallbacks);
     dual.start();
@@ -17,7 +19,9 @@ int main()
     assert(dualStarts == 1);
     assert(sample.state == "Recording");
     assert(sample.detail == "Ready.");
-    assert(!dual.shouldStopOnClose());
+    assert(dual.shouldStopOnClose());
+    dual.stop();
+    assert(dualStops == 1);
 
     int headphoneStarts = 0;
     app_media_audio::AudioToolCallbacks headphoneCallbacks;
@@ -46,6 +50,19 @@ int main()
     assert(sample.state == "Playing");
     assert(sample.detail == "Ready.");
     assert(music.shouldStopOnClose());
+
+    hal::HalBase::AudioStatus status;
+    app_media_audio::AudioToolCallbacks statusCallbacks;
+    statusCallbacks.status = [&] { return status; };
+    AudioToolController reporting(AudioToolKind::DualMic, statusCallbacks);
+    status.busy = true;
+    status.phase = hal::HalBase::AudioPhase::Cancelling;
+    sample = reporting.sample();
+    assert(sample.busy && sample.state == "Stopping");
+    status.phase = hal::HalBase::AudioPhase::Failed;
+    status.lastError = "Microphone unavailable";
+    sample = reporting.sample();
+    assert(sample.state == "Failed" && sample.detail == status.lastError);
 
     assert(AudioToolController::micStateLabel(hal::HalBase::MIC_TEST_IDLE) == std::string("Idle"));
     assert(AudioToolController::musicStateLabel(hal::HalBase::MUSIC_PLAY_IDLE) == std::string("Idle"));

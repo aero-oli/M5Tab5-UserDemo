@@ -12,6 +12,7 @@
 #include <smooth_lvgl.h>
 #include <apps/utils/audio/audio.h>
 #include <apps/runtime/performance_telemetry.h>
+#include <apps/app_pps/pps_controller.h>
 #include <apps/ui/ui_layout.h>
 #include <apps/ui/ui_components.h>
 #include <apps/ui/ui_theme.h>
@@ -337,6 +338,14 @@ void LauncherView::renderSummary()
                       static_cast<int>(registry().all().size()), static_cast<unsigned>(perf.lastAppUpdateMs),
                       static_cast<unsigned>(perf.avgAppUpdateMs), static_cast<unsigned>(perf.slowAppUpdates));
     }
+    const auto pps = app_pps::PpsController::backgroundState();
+    const bool ppsOffAlert = pps && (pps->off == app_pps::OffState::Pending || pps->off == app_pps::OffState::Unconfirmed);
+    if (ppsOffAlert) {
+        std::snprintf(statusText, sizeof(statusText), "%s - open PPS",
+                      pps->off == app_pps::OffState::Pending ? "PPS off pending" : "PPS OFF UNCONFIRMED");
+    }
+    lv_obj_set_style_text_color(_statusLabel,
+        app_ui::theme::color(ppsOffAlert ? app_ui::theme::red : app_ui::theme::muted), 0);
     if (_lastStatusText != statusText) {
         lv_label_set_text(_statusLabel, statusText);
         _lastStatusText = statusText;

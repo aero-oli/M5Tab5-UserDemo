@@ -1,190 +1,183 @@
-/*
- * SPDX-FileCopyrightText: 2025 M5Stack Technology CO LTD
- *
- * SPDX-License-Identifier: MIT
- */
+/* SPDX-License-Identifier: MIT */
 #include "../hal_desktop.h"
-#include "hal/hal.h"
+#include <hal/audio_session.h>
+#include <apps/runtime/async_job_runner.h>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cmath>
-#include <mooncake_log.h>
-#include <SDL2/SDL.h>
 #include <thread>
-#include <iostream>
+#include <SDL2/SDL.h>
 
-static const std::string _tag = "audio";
+namespace {
+using Operation = hal::HalBase::AudioOperation;
+using Phase = hal::HalBase::AudioPhase;
+using Token = hal::AudioSession::Token;
+hal::AudioSession session;
+app_runtime::AsyncJobRunner runner;
+std::atomic<uint8_t> volume {20};
+SDL_AudioDeviceID device = 0; // Only the reserved codec owner touches SDL audio.
 
-void HalDesktop::setSpeakerVolume(uint8_t volume)
+bool pauseFor(Token token, uint32_t ms)
 {
-    _current_speaker_volume = std::clamp((int)volume, 0, 100);
-    mclog::tagInfo(_tag, "set speaker volume: {}%", _current_speaker_volume);
+    const auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
+    while (std::chrono::steady_clock::now() < end) {
+        if (session.cancelled(token)) return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return !session.cancelled(token);
 }
 
-uint8_t HalDesktop::getSpeakerVolume()
+bool prepareDevice(Token token)
 {
-    return _current_speaker_volume;
+    if (device) return true;
+    if (!(SDL_WasInit(SDL_INIT_AUDIO) & SDL_INIT_AUDIO) && SDL_InitSubSystem(SDL_INIT_AUDIO) < 0) {
+        session.fail(token, "Audio initialization failed");
+        return false;
+    }
+    SDL_AudioSpec desired {};
+    desired.freq = 48000;
+    desired.format = AUDIO_S16SYS;
+    desired.channels = 2;
+    desired.samples = 1024;
+    device = SDL_OpenAudioDevice(nullptr, 0, &desired, nullptr, 0);
+    if (!device) {
+        session.fail(token, "Audio device unavailable");
+        return false;
+    }
+    SDL_PauseAudioDevice(device, 0);
+    return true;
 }
+
+bool waitQueue(Token token)
+{
+    const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    while (SDL_GetQueuedAudioSize(device)) {
+        if (session.cancelled(token)) return false;
+        if (std::chrono::steady_clock::now() >= end) {
+            session.fail(token, "Audio device stalled");
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    return true;
+}
+
+void playPcm(Token token, std::vector<int16_t>& data)
+{
+    if (data.size() > 48000 * 2 * 10) {
+        session.fail(token, "PCM playback exceeds 10 seconds");
+        return;
+    }
+    if (session.cancelled(token) || !prepareDevice(token)) return;
+    session.setPhase(token, Phase::Playing);
+    hal::transferAudio(session, token, data.data(), data.size() * sizeof(int16_t),
+                       [token](void* buffer, size_t length, size_t& done) {
+        if (!waitQueue(token)) return false;
+        const float scale = volume.load() / 100.0f;
+        std::vector<int16_t> adjusted(static_cast<int16_t*>(buffer), static_cast<int16_t*>(buffer) + length / sizeof(int16_t));
+        for (auto& sample : adjusted) sample = static_cast<int16_t>(sample * scale);
+        if (SDL_QueueAudio(device, adjusted.data(), static_cast<Uint32>(length)) < 0) return false;
+        done = length;
+        return true;
+    });
+    waitQueue(token);
+    SDL_ClearQueuedAudio(device);
+}
+
+template <typename Work>
+void startWorker(Operation operation, Phase phase, Work work)
+{
+    const auto token = session.reserve(operation, phase);
+    if (!token) return;
+    if (!runner.start("Audio", [token, work = std::move(work)]() mutable {
+        work(token);
+        session.finish(token);
+    })) session.startFailed(token);
+}
+
+void micTest(Token token)
+{
+    if (pauseFor(token, 3000)) {
+        session.setPhase(token, Phase::Playing);
+        pauseFor(token, 3000);
+    }
+}
+
+hal::HalBase::MicTestState_t micState()
+{
+    const auto status = session.snapshot();
+    if (!status.busy || (status.operation != Operation::DualMic && status.operation != Operation::HeadphoneMic))
+        return hal::HalBase::MIC_TEST_IDLE;
+    return status.phase == Phase::Recording ? hal::HalBase::MIC_TEST_RECORDING : hal::HalBase::MIC_TEST_PLAYING;
+}
+}  // namespace
+
+void HalDesktop::setSpeakerVolume(uint8_t value) { volume.store(std::min<uint8_t>(100, value)); }
+uint8_t HalDesktop::getSpeakerVolume() { return volume.load(); }
+hal::HalBase::AudioStatus HalDesktop::audioGetStatus() { return session.snapshot(); }
+void HalDesktop::audioCancel() { session.cancel(); }
+bool HalDesktop::stopAudioAndWait(uint32_t timeoutMs) { return session.stopAndWait(timeoutMs); }
+void HalDesktop::resumeAudio() { session.resume(); }
 
 void HalDesktop::audioPlay(std::vector<int16_t>& data, bool async)
 {
-    static std::once_flag initFlag;
-    static SDL_AudioDeviceID deviceId = 0;
-    static std::mutex audioMutex;
-
-    // 音频初始化 & 打开设备（只执行一次）
-    std::call_once(initFlag, []() {
-        if (!(SDL_WasInit(SDL_INIT_AUDIO) & SDL_INIT_AUDIO)) {
-            if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0) {
-                std::cerr << "Failed to init SDL audio: " << SDL_GetError() << std::endl;
-                return;
-            }
-        }
-
-        SDL_AudioSpec want, have;
-        SDL_memset(&want, 0, sizeof(want));
-        want.freq     = 48000;
-        want.format   = AUDIO_S16SYS;
-        want.channels = 2;
-        want.samples  = 4096;
-        want.callback = nullptr;
-
-        deviceId = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
-        if (deviceId == 0) {
-            std::cerr << "SDL_OpenAudioDevice failed: " << SDL_GetError() << std::endl;
-        } else {
-            SDL_PauseAudioDevice(deviceId, 0);  // 开启播放
-        }
-    });
-
-    // 若设备打开失败，直接返回
-    if (deviceId == 0) return;
-
-    // 异步线程提交音频数据
-    auto volume = getSpeakerVolume();
-    std::thread([data, volume]() {
-        std::vector<int16_t> adjustedData = data;
-
-        // 音量缩放
-        float scale = volume / 100.0f;
-        for (size_t i = 0; i < adjustedData.size(); ++i) {
-            int sample = static_cast<int>(adjustedData[i] * scale);
-            if (sample > INT16_MAX) sample = INT16_MAX;
-            if (sample < INT16_MIN) sample = INT16_MIN;
-            adjustedData[i] = static_cast<int16_t>(sample);
-        }
-
-        // 加锁提交数据（线程安全）
-        {
-            std::lock_guard<std::mutex> lock(audioMutex);
-            int byteSize = adjustedData.size() * sizeof(int16_t);
-            if (SDL_QueueAudio(deviceId, adjustedData.data(), byteSize) < 0) {
-                std::cerr << "SDL_QueueAudio failed: " << SDL_GetError() << std::endl;
-            }
-        }
-    }).detach();
+    const auto token = session.reserve(Operation::Tone, Phase::Starting);
+    if (!token) return;
+    if (data.size() > 48000 * 2 * 10) {
+        session.fail(token, "PCM playback exceeds 10 seconds");
+        session.finish(token);
+        return;
+    }
+    auto work = [token, samples = data]() mutable {
+        playPcm(token, samples);
+        session.finish(token);
+    };
+    if (async) {
+        if (!runner.start("Audio PCM", std::move(work))) session.startFailed(token);
+    } else {
+        work();
+    }
 }
 
-void HalDesktop::audioRecord(std::vector<int16_t>& data, uint16_t durationMs, float gain)
+void HalDesktop::audioRecord(std::vector<int16_t>& data, uint16_t durationMs, float)
 {
-    const uint32_t sampleRate   = 48000;
-    const uint32_t channels     = 4;
-    const float frequency       = 500.0f;
-    const uint32_t totalSamples = (sampleRate * durationMs) / 1000;
-
+    const auto token = session.reserve(Operation::Record, Phase::Recording);
+    if (!token) return;
     data.clear();
-    data.reserve(totalSamples * channels);
-
-    for (uint32_t i = 0; i < totalSamples; ++i) {
-        float t             = static_cast<float>(i) / sampleRate;
-        float sample        = std::sin(2.0f * M_PI * frequency * t);
-        int16_t sampleInt16 = static_cast<int16_t>(sample * 32767);
-        for (int ch = 0; ch < channels; ++ch) {
-            data.push_back(sampleInt16);
+    if (durationMs > 10000) {
+        session.fail(token, "Recording duration exceeds 10 seconds");
+    } else {
+        const size_t frames = static_cast<size_t>(48000) * durationMs / 1000;
+        data.resize(frames * 4);
+        for (size_t i = 0; i < frames && !session.cancelled(token); ++i) {
+            const auto sample = static_cast<int16_t>(std::sin(2 * 3.141592653589793 * 500 * i / 48000) * 32767);
+            for (int channel = 0; channel < 4; ++channel) data[i * 4 + channel] = sample;
         }
+        if (session.cancelled(token)) data.clear();
     }
+    session.finish(token);
 }
-
-struct DualMicRecordTestData_t {
-    std::mutex mutex;
-    hal::HalBase::MicTestState_t state = hal::HalBase::MIC_TEST_IDLE;
-};
-static DualMicRecordTestData_t _dual_mic_record_test_data;
-
-void HalDesktop::startDualMicRecordTest()
-{
-    std::lock_guard<std::mutex> lock(_dual_mic_record_test_data.mutex);
-    if (_dual_mic_record_test_data.state == hal::HalBase::MIC_TEST_IDLE) {
-        _dual_mic_record_test_data.state = hal::HalBase::MIC_TEST_RECORDING;
-        std::thread([this]() {
-            GetHAL()->delay(3000);
-            _dual_mic_record_test_data.mutex.lock();
-            _dual_mic_record_test_data.state = hal::HalBase::MIC_TEST_PLAYING;
-            _dual_mic_record_test_data.mutex.unlock();
-            GetHAL()->delay(3000);
-            _dual_mic_record_test_data.mutex.lock();
-            _dual_mic_record_test_data.state = hal::HalBase::MIC_TEST_IDLE;
-            _dual_mic_record_test_data.mutex.unlock();
-        }).detach();
-    }
-}
-
-hal::HalBase::MicTestState_t HalDesktop::getDualMicRecordTestState()
-{
-    std::lock_guard<std::mutex> lock(_dual_mic_record_test_data.mutex);
-    return _dual_mic_record_test_data.state;
-}
-
-void HalDesktop::startHeadphoneMicRecordTest()
-{
-    startDualMicRecordTest();
-}
-
-hal::HalBase::MicTestState_t HalDesktop::getHeadphoneMicRecordTestState()
-{
-    return getDualMicRecordTestState();
-}
-
-struct MusicPlayTestData_t {
-    std::mutex mutex;
-    bool killSignal                      = false;
-    hal::HalBase::MusicPlayState_t state = hal::HalBase::MUSIC_PLAY_IDLE;
-};
-static MusicPlayTestData_t _music_play_test_data;
-
+void HalDesktop::startDualMicRecordTest() { startWorker(Operation::DualMic, Phase::Recording, micTest); }
+void HalDesktop::startHeadphoneMicRecordTest() { startWorker(Operation::HeadphoneMic, Phase::Recording, micTest); }
+hal::HalBase::MicTestState_t HalDesktop::getDualMicRecordTestState() { return micState(); }
+hal::HalBase::MicTestState_t HalDesktop::getHeadphoneMicRecordTestState() { return micState(); }
 void HalDesktop::startPlayMusicTest()
 {
-    std::lock_guard<std::mutex> lock(_music_play_test_data.mutex);
-    if (_music_play_test_data.state == hal::HalBase::MUSIC_PLAY_IDLE) {
-        _music_play_test_data.state      = hal::HalBase::MUSIC_PLAY_PLAYING;
-        _music_play_test_data.killSignal = false;
-        std::thread([this]() {
-            mclog::tagInfo(_tag, "start playing music");
-            int count = 0;
-            while (count < 5 * 1000 / 100) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                std::lock_guard<std::mutex> lock(_music_play_test_data.mutex);
-                if (_music_play_test_data.killSignal) {
-                    break;
-                }
-                count++;
-            }
-            _music_play_test_data.mutex.lock();
-            _music_play_test_data.state = hal::HalBase::MUSIC_PLAY_IDLE;
-            _music_play_test_data.mutex.unlock();
-            mclog::tagInfo(_tag, "stop playing music");
-        }).detach();
-    } else {
-        mclog::tagInfo(_tag, "already playing");
-    }
+    startWorker(Operation::Music, Phase::Playing, [](Token token) { pauseFor(token, 5000); });
 }
-
 hal::HalBase::MusicPlayState_t HalDesktop::getMusicPlayTestState()
 {
-    std::lock_guard<std::mutex> lock(_music_play_test_data.mutex);
-    return _music_play_test_data.state;
+    const auto status = session.snapshot();
+    return status.busy && (status.operation == Operation::Music || status.operation == Operation::Startup ||
+                           status.operation == Operation::Shutdown) ? MUSIC_PLAY_PLAYING : MUSIC_PLAY_IDLE;
 }
-
-void HalDesktop::stopPlayMusicTest()
+void HalDesktop::stopPlayMusicTest() { audioCancel(); }
+void HalDesktop::playStartupSfx()
 {
-    std::lock_guard<std::mutex> lock(_music_play_test_data.mutex);
-    _music_play_test_data.killSignal = true;
+    startWorker(Operation::Startup, Phase::Playing, [](Token token) { pauseFor(token, 500); });
+}
+void HalDesktop::playShutdownSfx()
+{
+    startWorker(Operation::Shutdown, Phase::Playing, [](Token token) { pauseFor(token, 500); });
 }

@@ -5,9 +5,12 @@
  */
 #include "hal/hal_esp32.h"
 #include <hal/camera_preview.h>
+#include <hal/camera_cleanup.h>
 #include <array>
 #include <memory>
 #include <mutex>
+#include <condition_variable>
+#include <chrono>
 #include <new>
 #include <fcntl.h>
 #include <sys/ioctl.h>
@@ -33,6 +36,8 @@ constexpr int64_t kFrameTimeoutUs = 2000000;
 constexpr size_t kBufferAlignment = 128;
 
 std::mutex s_mutex;
+std::condition_variable s_stopped;
+bool s_shutdown = false;
 hal::HalBase::CameraStatus s_status{State::Stopped, {}, 0, 0, 0, false};
 TaskHandle_t s_task = nullptr;
 // Target access always takes the display lock before s_mutex.
@@ -101,29 +106,30 @@ public:
             }
         }
         if (_fd >= 0) {
-            if (_streaming) {
+            const bool released = hal::releaseCameraCapture(_startAttempted, [&] {
+                // STREAMON may have failed after enabling DMA; STREAMOFF must
+                // succeed even in that case before close may destroy its buffers.
                 int type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-                if (ioctl(_fd, VIDIOC_STREAMOFF, &type) != 0) {
-                    cleanup_error("Could not stop camera stream");
+                return ioctl(_fd, VIDIOC_STREAMOFF, &type) == 0;
+            }, [&] {
+                for (size_t i = 0; i < _captureBuffers.size(); ++i) {
+                    if (_captureBuffers[i] != nullptr) munmap(_captureBuffers[i], _captureLengths[i]);
                 }
-            }
-            for (size_t i = 0; i < _captureBuffers.size(); ++i) {
-                if (_captureBuffers[i] != nullptr) {
-                    munmap(_captureBuffers[i], _captureLengths[i]);
-                }
-            }
-            if (close(_fd) != 0) {
-                cleanup_error("Could not close camera device");
+                if (close(_fd) != 0) cleanup_error("Could not close camera device");
+            });
+            if (!released) {
+                // Deliberately retain fd/mappings for this boot. The capture
+                // driver still owns them; Unavailable prevents another session.
+                cleanup_error("Camera stop unconfirmed; capture resources retained until reboot");
             }
         }
         if (_ppa != nullptr) {
             if (ppa_unregister_client(_ppa) != ESP_OK) {
-                cleanup_error("Could not release camera scaler");
+                cleanup_error("Could not release camera scaler; preview buffers retained until reboot");
+                return; // A failed unregister does not prove the scaler released its buffers.
             }
         }
-        for (auto* buffer : _previewBuffers) {
-            heap_caps_free(buffer);
-        }
+        for (auto* buffer : _previewBuffers) heap_caps_free(buffer);
     }
 
     bool initialize(const CaptureRequest& request, std::string& error)
@@ -226,11 +232,11 @@ public:
             return false;
         }
         int type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        _startAttempted = true;
         if (ioctl(_fd, VIDIOC_STREAMON, &type) != 0) {
             error = "Could not start camera stream";
             return false;
         }
-        _streaming = true;
         return true;
     }
 
@@ -322,13 +328,15 @@ private:
         _cleanupFailed = true;
         if (_error.empty()) {
             _error = message;
+        } else {
+            _error += std::string("; ") + message;
         }
     }
 
     std::string& _error;
     bool& _cleanupFailed;
     int _fd = -1;
-    bool _streaming = false;
+    bool _startAttempted = false;
     uint32_t _sourceWidth = 0;
     uint32_t _sourceHeight = 0;
     CaptureRequest _request{};
@@ -364,6 +372,7 @@ void run_capture_session(CaptureRequest* param)
         s_status.lastError = s_stop_requested && !cleanupFailed ? "" : error;
         s_task = nullptr;
     }
+    s_stopped.notify_all();
 }
 
 void capture_task(void* param)
@@ -379,7 +388,7 @@ bool HalEsp32::startCameraCapture(lv_obj_t* canvas)
 {
     LvglLockGuard displayLock;
     std::lock_guard<std::mutex> lock(s_mutex);
-    if (s_task != nullptr || s_status.state == State::Unavailable) {
+    if (s_shutdown || s_task != nullptr || s_status.state == State::Unavailable) {
         return false;
     }
     s_status = {};
@@ -441,4 +450,25 @@ hal::HalBase::CameraStatus HalEsp32::cameraGetStatus()
 bool HalEsp32::isCameraCapturing()
 {
     return cameraGetStatus().state == State::Running;
+}
+
+bool HalEsp32::shutdownCamera(uint32_t timeoutMs)
+{
+    {
+        // Close admission and detach the target before waiting. The worker must
+        // acquire the display lock during cleanup, so never keep it while waiting.
+        LvglLockGuard displayLock;
+        std::lock_guard<std::mutex> lock(s_mutex);
+        s_shutdown = true;
+        if (s_canvas != nullptr) {
+            clear_canvas(s_canvas);
+            s_canvas = nullptr;
+        }
+        if (s_task != nullptr) {
+            s_stop_requested = true;
+            s_status.state = State::Stopping;
+        }
+    }
+    std::unique_lock<std::mutex> lock(s_mutex);
+    return s_stopped.wait_for(lock, std::chrono::milliseconds(timeoutMs), [] { return s_task == nullptr; });
 }

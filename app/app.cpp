@@ -1249,7 +1249,42 @@ static void desktopAssertAllRegisteredAppsUi()
                     mclog::tagError(_tag, "desktop PPS reopening must reflect verified hardware setpoints");
                     std::abort();
                 }
+            }
+            desktopSetPpsOutput(true);
+            desktopWaitForPpsLabel("Output On");
+            setenv("M5TAB5_DESKTOP_PPS_OFF_FAIL", "1", 1);
+            {
+                LvglLockGuard lock;
+                auto* root = desktopTopFullscreenRoot();
                 lv_obj_send_event(desktopFindButton(root, "Back"), LV_EVENT_CLICKED, nullptr);
+            }
+            desktopPumpLifecycle();
+            const auto warningStart = GetHAL()->millis();
+            bool warningVisible = false;
+            while (GetHAL()->millis() - warningStart < 2000) {
+                desktopPumpLifecycle();
+                {
+                    LvglLockGuard lock;
+                    warningVisible = desktopHasLabel(desktopTopFullscreenRoot(), "PPS OFF UNCONFIRMED - open PPS");
+                }
+                if (warningVisible) break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            }
+            if (!warningVisible) {
+                mclog::tagError(_tag, "PPS off failure was lost after returning Home");
+                std::abort();
+            }
+            {
+                LvglLockGuard lock;
+                desktopSaveUiCapture("Home-PPS-off-unconfirmed");
+            }
+            unsetenv("M5TAB5_DESKTOP_PPS_OFF_FAIL");
+            if (!registry.open(registeredApp.key)) std::abort();
+            desktopPumpLifecycle();
+            desktopWaitForPpsLabel("Output Off confirmed");
+            {
+                LvglLockGuard lock;
+                lv_obj_send_event(desktopFindButton(desktopTopFullscreenRoot(), "Back"), LV_EVENT_CLICKED, nullptr);
             }
             desktopPumpLifecycle();
             const auto reopenedClose = desktopCaptureUiSnapshot();
@@ -1377,6 +1412,11 @@ void app::Destroy()
         if (_lifecycleTimer) lv_timer_delete(_lifecycleTimer);
         _lifecycleTimer = nullptr;
         DestroyMooncake();
+    }
+    GetHAL()->audioCancel();
+    if (!GetHAL()->shutdownCamera(5000)) {
+        mclog::tagError(_tag, "Camera shutdown timed out: refusing to destroy HAL while capture is active");
+        std::abort();
     }
     app_pps::PpsController::shutdown();
     app_settings_power::PowerSettingsController::shutdown();

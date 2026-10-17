@@ -57,9 +57,14 @@ public:
 
     bool startCameraCapture(lv_obj_t* imgCanvas) override;
     void stopCameraCapture() override;
+    bool shutdownCamera(uint32_t timeoutMs) override;
     CameraStatus cameraGetStatus() override;
     bool isCameraCapturing() override;
 
+    AudioStatus audioGetStatus() override;
+    void audioCancel() override;
+    bool stopAudioAndWait(uint32_t timeoutMs) override;
+    void resumeAudio() override;
     void setSpeakerVolume(uint8_t volume) override;
     uint8_t getSpeakerVolume() override;
     void audioRecord(std::vector<int16_t>& data, uint16_t durationMs, float gain = 80.0f) override;

@@ -23,11 +23,13 @@ struct AudioToolCallbacks {
     std::function<hal::HalBase::MicTestState_t()> micState;
     std::function<hal::HalBase::MusicPlayState_t()> musicState;
     std::function<bool()> headphoneDetected;
+    std::function<hal::HalBase::AudioStatus()> status;
 };
 
 struct AudioToolSample {
     std::string state;
     std::string detail;
+    bool busy = false;
 };
 
 class AudioToolController {

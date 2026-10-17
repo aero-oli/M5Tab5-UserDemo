@@ -398,3 +398,33 @@ target_include_directories(network_state_tests SYSTEM PUBLIC dependencies/lvgl)
 target_compile_features(network_state_tests PUBLIC cxx_std_17)
 target_link_libraries(network_state_tests PUBLIC pthread)
 add_test(NAME network_state_tests COMMAND network_state_tests)
+
+add_executable(camera_cleanup_tests tests/test_camera_cleanup.cpp)
+target_include_directories(camera_cleanup_tests PUBLIC app)
+target_compile_features(camera_cleanup_tests PUBLIC cxx_std_17)
+add_test(NAME camera_cleanup_tests COMMAND camera_cleanup_tests)
+
+add_executable(power_recovery_tests tests/test_power_recovery.cpp)
+target_include_directories(power_recovery_tests PUBLIC app)
+target_compile_features(power_recovery_tests PUBLIC cxx_std_17)
+add_test(NAME power_recovery_tests COMMAND power_recovery_tests)
+
+add_executable(bmi270_driver_tests tests/test_bmi270_driver.c
+    platforms/tab5/components/sensor_bmi270/src/accel_gyro_bmi270.c)
+target_include_directories(bmi270_driver_tests PRIVATE tests/bmi270_stubs
+    platforms/tab5/components/sensor_bmi270/include)
+set_target_properties(bmi270_driver_tests PROPERTIES C_STANDARD 11 C_EXTENSIONS ON)
+target_link_libraries(bmi270_driver_tests PRIVATE pthread)
+add_test(NAME bmi270_driver_tests COMMAND bmi270_driver_tests)
+
+add_executable(audio_session_tests tests/test_audio_session.cpp app/apps/runtime/async_job_runner.cpp)
+target_include_directories(audio_session_tests PRIVATE app)
+target_include_directories(audio_session_tests SYSTEM PRIVATE dependencies/lvgl)
+target_compile_features(audio_session_tests PRIVATE cxx_std_17)
+target_link_libraries(audio_session_tests PRIVATE pthread)
+add_test(NAME audio_session_tests COMMAND audio_session_tests)
+
+add_executable(audio_codec_transition_tests tests/test_audio_codec_transition.cpp)
+target_include_directories(audio_codec_transition_tests PRIVATE platforms/tab5/components/m5stack_tab5/include)
+target_compile_features(audio_codec_transition_tests PRIVATE cxx_std_17)
+add_test(NAME audio_codec_transition_tests COMMAND audio_codec_transition_tests)

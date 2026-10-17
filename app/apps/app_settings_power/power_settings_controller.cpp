@@ -176,15 +176,12 @@ void PowerSettingsController::shutdown()
 {
     auto worker = defaultWorker();
     if (!worker) return;
-    for (;;) {
-        {
-            std::lock_guard<std::mutex> lock(worker->mutex);
-            worker->poll = false;
-            if (!worker->working && !worker->command && !worker->wakeRequested) break;
-        }
-        kick(worker);
-        GetHAL()->delay(5);
+    {
+        std::lock_guard<std::mutex> lock(worker->mutex);
+        worker->poll = false;
     }
+    kick(worker);
+    // Active jobs own the worker. The process-wide bounded drain waits before HAL destruction.
     defaultWorker().reset();
 }
 

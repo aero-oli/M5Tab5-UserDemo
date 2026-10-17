@@ -15,6 +15,7 @@
 #include <modules/i2c_device.h>
 #include <modules/rtc/rx8130_wake_timer.h>
 #include <accel_gyro_bmi270.h>
+#include <hal/power_recovery.h>
 
 static const std::string _tag = "power";
 HalEsp32* HalEsp32::_sleepOwner = nullptr;
@@ -143,26 +144,23 @@ hal::PowerResult HalEsp32::performPowerAction(hal::PowerAction action, uint16_t 
 
     modules::HalI2cDevice rtcDevice(hal::ModuleBus::MBus, 0x32);
     rtc::Rx8130WakeTimer timer(rtcDevice);
-    if (!timer.cancel()) return {false, false, false, timer.error()};
-    if (accel_gyro_bmi270_init(bsp_i2c_get_handle()) != ESP_OK || !accel_gyro_bmi270_disable_wake_irq())
-        return {false, false, false, "Motion wake disable not verified"};
-    if (action == hal::PowerAction::SleepShake && !accel_gyro_bmi270_motion_irq()) {
-        const bool disabled = accel_gyro_bmi270_disable_wake_irq();
-        return {false, false, false, disabled ? "Motion wake configuration failed" :
-                                              "Motion wake failed and may still be armed"};
-    }
+    auto failed = [&](const std::string& message) {
+        auto result = hal::recoverPowerFailure(hal::PowerResult{false, false, false, message},
+            [&] { return timer.cancel(); }, [&] { return accel_gyro_bmi270_restore_normal(); });
+        resumeAudio(); // Reopen tone/playback admission only after preparation has unwound.
+        return result;
+    };
+    if (!timer.cancel()) return failed(timer.error());
+    if (accel_gyro_bmi270_init(bsp_i2c_get_handle()) != ESP_OK)
+        return failed("IMU initialization failed");
+    if (!accel_gyro_bmi270_disable_wake_irq()) return failed("Motion wake disable not verified");
+    if (action == hal::PowerAction::SleepShake && !accel_gyro_bmi270_motion_irq())
+        return failed("Motion wake configuration failed");
 
-    // Audio cannot keep shutdown waiting forever. Do not dim the screen before preparation succeeds.
-    stopPlayMusicTest();
-    const auto audioStart = millis();
-    while (getMusicPlayTestState() != MUSIC_PLAY_IDLE && millis() - audioStart < 2000) delay(20);
-    if (getMusicPlayTestState() != MUSIC_PLAY_IDLE) {
-        const bool disabled = accel_gyro_bmi270_disable_wake_irq();
-        return {false, false, false, disabled ? "Audio did not stop; shutdown cancelled" :
-                                              "Audio stop failed; motion wake may still be armed"};
-    }
+    // Cancel every codec user and close admission until poweroff or recovery.
+    if (!stopAudioAndWait(2000)) return failed("Audio did not stop; shutdown cancelled");
     if (action == hal::PowerAction::SleepRtc && !timer.arm(rtcMinutes * 60))
-        return {false, false, false, timer.error()};
+        return failed(timer.error());
     uint8_t brightness = 0;
     bool dimmed = false;
     {
@@ -171,21 +169,13 @@ hal::PowerResult HalEsp32::performPowerAction(hal::PowerAction action, uint16_t 
         dimmed = bsp_display_brightness_set(0) == ESP_OK;
         if (dimmed) _current_lcd_brightness = 0;
     }
-    if (!dimmed) {
-        const bool rtcDisabled = timer.cancel();
-        const bool motionDisabled = accel_gyro_bmi270_disable_wake_irq();
-        return {false, false, false, rtcDisabled && motionDisabled ? "Display off failed; shutdown cancelled" :
-                                                                              "Display off failed; a wake source may remain armed"};
-    }
+    if (!dimmed) return failed("Display off failed; shutdown cancelled");
     bsp_generate_poweroff_signal();
     delay(1500);
     // A functioning board power switch never returns here; reporting success would hide a failed shutdown.
-    const bool disarmed = timer.cancel();
-    const bool motionDisarmed = accel_gyro_bmi270_disable_wake_irq();
     {
         LvglLockGuard lock;
         setDisplayBrightness(brightness);
     }
-    return {false, false, false, disarmed && motionDisarmed ? "Power-off signal sent but device is still running" :
-                                                            "Shutdown failed; a wake source may still be armed"};
+    return failed("Power-off signal sent but device is still running");
 }

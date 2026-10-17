@@ -21,6 +21,7 @@
 #include "app_media_audio/app_audio_tool.h"
 #include "app_media_camera/app_camera.h"
 #include "app_pps/app_pps.h"
+#include "app_pps/pps_controller.h"
 #include "app_settings/app_settings.h"
 #include "app_settings_network/app_network.h"
 #include "app_settings_updates/app_updates.h"
@@ -294,5 +295,12 @@ void app_catalog::registerDefaultApps(AppRegistry& apps)
               false,
               true,
               [] { return std::make_unique<AppPps>(); },
-              StatusProvider{}});
+              [] {
+                  auto state = app_pps::PpsController::backgroundState();
+                  if (!state) return AppStatus{"Not checked", StatusLevel::Neutral};
+                  const auto level = state->off == app_pps::OffState::Unconfirmed ? StatusLevel::Error :
+                      state->off == app_pps::OffState::Pending || state->output == app_pps::OutputState::Unknown
+                          ? StatusLevel::Warning : StatusLevel::Neutral;
+                  return AppStatus{app_pps::PpsController::outputSummary(*state), level};
+              }});
 }

@@ -221,6 +221,13 @@ public:
     virtual void stopCameraCapture()
     {
     }
+    // Process teardown only; call outside the display lock. A false result
+    // forbids HAL destruction because the capture worker may still use it.
+    virtual bool shutdownCamera(uint32_t timeoutMs)
+    {
+        stopCameraCapture();
+        return true; // Base/synchronous platforms own no independent camera task.
+    }
     virtual CameraStatus cameraGetStatus()
     {
         return {};
@@ -248,6 +255,20 @@ public:
     {
         return 0;
     }
+    enum class AudioOperation { None, Tone, Record, DualMic, HeadphoneMic, Music, Startup, Shutdown };
+    enum class AudioPhase { Idle, Starting, Recording, Playing, Cancelling, Failed };
+    struct AudioStatus {
+        AudioOperation operation = AudioOperation::None;
+        AudioPhase phase = AudioPhase::Idle;
+        bool busy = false;
+        std::string lastError;
+    };
+    virtual AudioStatus audioGetStatus() { return {}; }
+    // Nonblocking cancellation. Draining also closes admission until resumeAudio().
+    virtual void audioCancel() {}
+    virtual bool stopAudioAndWait(uint32_t timeoutMs) { return true; }
+    virtual void resumeAudio() {}
+
     // [MIC-L, AEC, MIC-R, MIC-HP]
     virtual void audioRecord(std::vector<int16_t>& data, uint16_t durationMs, float gain = 80.0f)
     {

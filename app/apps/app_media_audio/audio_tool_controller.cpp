@@ -32,6 +32,25 @@ AudioToolSample AudioToolController::sample() const
 {
     AudioToolSample result;
     result.detail = "Ready.";
+    if (_callbacks.status) {
+        const auto status = _callbacks.status();
+        result.busy = status.busy;
+        using Phase = hal::HalBase::AudioPhase;
+        switch (status.phase) {
+            case Phase::Starting: result.state = "Starting"; break;
+            case Phase::Recording: result.state = "Recording"; break;
+            case Phase::Playing: result.state = "Playing"; break;
+            case Phase::Cancelling: result.state = "Stopping"; break;
+            case Phase::Failed: result.state = "Failed"; break;
+            case Phase::Idle: result.state = "Idle"; break;
+        }
+        if (!status.lastError.empty()) result.detail = status.lastError;
+        else if (status.phase == Phase::Cancelling) result.detail = "Stopping audio...";
+        else if (status.busy) result.detail = "Audio codec in use.";
+        else if (_kind == AudioToolKind::Headphone && _callbacks.headphoneDetected && !_callbacks.headphoneDetected())
+            result.detail = "No headset detected. The test can still be started.";
+        return result;
+    }
     if (_kind == AudioToolKind::Music) {
         result.state = musicStateLabel(_callbacks.musicState ? _callbacks.musicState() : hal::HalBase::MUSIC_PLAY_IDLE);
         return result;
@@ -46,7 +65,7 @@ AudioToolSample AudioToolController::sample() const
 
 bool AudioToolController::shouldStopOnClose() const
 {
-    return _kind == AudioToolKind::Music;
+    return true;
 }
 
 std::string AudioToolController::micStateLabel(hal::HalBase::MicTestState_t state)

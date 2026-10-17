@@ -30,7 +30,7 @@ Do not describe a desktop simulator pass as electrical, DMA, wake, radio or OTA 
 | --- | --- | --- |
 | 1 | Preserve baseline, record builds and feature parity | Source checkpoint verified |
 | 2 | Single UI lifecycle owner, synchronized network snapshots, nonblocking sensor sampling, worker shutdown and device instrumentation | Software gate passed: 56/56 desktop tests; Tab5 build |
-| 3 | Camera failed-stop safety, BMI270 wake rollback, audio ownership/cancellation, brightness recovery, visible PPS off failure | Pending |
+| 3 | Camera failed-stop safety, BMI270 wake rollback, audio ownership/cancellation, brightness recovery, visible PPS off failure | Software gate passed: 61/61 desktop tests; focused final rerun; Tab5 build |
 | 4 | Truthful RTC/SD/sensor results, restore RTC setting, fresh Home status | Pending |
 | 5 | Wi-Fi restoration/recovery; verified HTTPS OTA, progress, cancellation, confirmation and recovery | Pending |
 | 6 | Focused Home, exact PPS entry, populated logs/files/networks, keyboard/error/busy journeys | Pending |
@@ -53,6 +53,9 @@ idf.py -C platforms/tab5 build
 ```
 
 ## Device release gate (not yet run)
+
+The user confirmed on 2026-10-17 that no board or peripherals are connected to this laptop.
+Device-only acceptance is blocked on that setup; no firmware has been flashed during stabilization.
 
 - Record installed firmware identity and partition map; the baseline changes the NVS and app
   partition layout, so do not assume an OTA image can migrate the installed partition table.
@@ -86,3 +89,22 @@ Network strings and status are published under a short snapshot mutex, separate 
 Diagnostics records render time, HAL callers' lock wait/hold time, software input-to-flush-callback
 latency, and device heap/task/UI-stack counters. This does not measure physical panel presentation
 or all internal LVGL-port lock holds. Real device latency, memory and stack acceptance remain pending.
+
+## Milestone 3 evidence and remaining hardware limits
+
+Verified 2026-10-17: 61/61 desktop tests, followed by a passing five-test focused rerun after the
+final audio volume/clock corrections; Tab5 firmware build. Production BMI wrapper tests passed
+ASan/UBSan, audio session/volume tests passed TSan. Camera cleanup and codec-clock transaction
+checks inject failures at the resource boundary. Rendered Home off-failure warning and Diagnostics
+were inspected. No device was connected or flashed.
+
+Camera start/stop uncertainty quarantines DMA resources until reboot; process teardown also drains
+its independent capture task before HAL destruction. BMI initialization is idempotent and serialized,
+and power rollback restores normal sampling while preserving the original error. Audio has one owner,
+registered jobs, cancellable transfers, and verified software clock handoff between 44.1 kHz playback
+and 48 kHz four-channel capture. Failed drains retain ownership; zero volume remains muted.
+
+The current SDK has a one-second I2S transfer timeout and 100 ms codec-control I2C timeout. Its
+mute/volume setters discard some underlying driver errors, so API return checks do not prove those
+physical writes. Playback quality, physical cancellation latency, DMA faults, touch/motion/timed wake,
+PPS output-off behaviour and restoration on the actual board remain device acceptance gates.

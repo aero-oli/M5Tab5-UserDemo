@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <modules/i2c_device.h>
 #include <modules/pps/pps_device.h>
@@ -14,11 +15,13 @@
 namespace app_pps {
 
 enum class OutputState { Unknown, Disabled, Enabled };
+enum class OffState { NotRequested, Pending, Unconfirmed, Confirmed };
 
 struct PpsState {
     pps::PpsIdentity identity;
     pps::PpsTelemetry telemetry;
     OutputState output = OutputState::Unknown;
+    OffState off = OffState::NotRequested;
     float pendingVoltage = 5.0f;
     float pendingCurrent = 1.0f;
     float customVoltage = 5.0f;
@@ -58,6 +61,9 @@ public:
     static bool canApply(const PpsState& state);
     static bool canEnable(const PpsState& state);
     static void shutdown();
+    // Read the surviving device owner without opening PPS or issuing hardware work.
+    static std::optional<PpsState> backgroundState();
+    static std::string outputSummary(const PpsState& state);
 
 private:
     struct Worker;

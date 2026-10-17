@@ -17,7 +17,6 @@
 #include <apps/ui/app_shell.h>
 #include <apps/ui/ui_components.h>
 #include <apps/ui/ui_theme.h>
-#include <apps/utils/audio/audio.h>
 
 using namespace app_media_audio;
 
@@ -70,6 +69,7 @@ private:
     AudioToolController _controller;
     std::unique_ptr<app_ui::AppShell> _shell;
     lv_obj_t* _state = nullptr;
+    lv_obj_t* _start = nullptr;
     lv_obj_t* _detail = nullptr;
     uint32_t _lastUpdateMs = 0;
 
@@ -90,10 +90,10 @@ private:
 
         _state = app_ui::makeMetricCard(content(), "State", "Idle", layout.stateCard.x, layout.stateCard.y,
                                         layout.stateCard.w, layout.stateCard.h);
-        auto* start = app_ui::makeButton(content(), _config.kind == AudioToolKind::Music ? "Play" : "Record and Play",
+        _start = app_ui::makeButton(content(), _config.kind == AudioToolKind::Music ? "Play" : "Record and Play",
                                          layout.startButton.x, layout.startButton.y, layout.startButton.w,
                                          layout.startButton.h, app_ui::ButtonKind::Primary);
-        lv_obj_add_event_cb(start, AppAudioTool::onStart, LV_EVENT_CLICKED, this);
+        lv_obj_add_event_cb(_start, AppAudioTool::onStart, LV_EVENT_CLICKED, this);
         if (layout.hasStopButton) {
             auto* stop = app_ui::makeButton(content(), "Stop", layout.stopButton.x, layout.stopButton.y,
                                             layout.stopButton.w, layout.stopButton.h, app_ui::ButtonKind::Danger);
@@ -117,6 +117,8 @@ private:
     {
         const auto sample = _controller.sample();
         setMetric(_state, "State", sample.state.c_str());
+        if (sample.busy) lv_obj_add_state(_start, LV_STATE_DISABLED);
+        else lv_obj_remove_state(_start, LV_STATE_DISABLED);
         if (_detail != nullptr) {
             lv_label_set_text_fmt(_detail, "%s\nSampling: 4 Hz while this app is open", sample.detail.c_str());
         }
@@ -124,14 +126,12 @@ private:
 
     void start()
     {
-        audio::play_next_tone_progression();
         _controller.start();
         refresh();
     }
 
     void stop()
     {
-        audio::play_next_tone_progression();
         _controller.stop();
         refresh();
     }
@@ -173,10 +173,13 @@ private:
 std::unique_ptr<mooncake::AppAbility> app_media_audio::makeDualMicApp()
 {
     AudioToolCallbacks callbacks;
+    callbacks.status = [] { return GetHAL()->audioGetStatus(); };
+    callbacks.stop = [] { GetHAL()->audioCancel(); };
     callbacks.start = [] { GetHAL()->startDualMicRecordTest(); };
     callbacks.micState = [] { return GetHAL()->getDualMicRecordTestState(); };
     AudioToolConfig config;
     config.kind = AudioToolKind::DualMic;
+    config.hasStop = true;
     config.title = "Dual Mic";
     config.description = "Record from the dual microphones and play back the result.";
     config.callbacks = std::move(callbacks);
@@ -186,11 +189,14 @@ std::unique_ptr<mooncake::AppAbility> app_media_audio::makeDualMicApp()
 std::unique_ptr<mooncake::AppAbility> app_media_audio::makeHeadphoneApp()
 {
     AudioToolCallbacks callbacks;
+    callbacks.status = [] { return GetHAL()->audioGetStatus(); };
+    callbacks.stop = [] { GetHAL()->audioCancel(); };
     callbacks.start = [] { GetHAL()->startHeadphoneMicRecordTest(); };
     callbacks.micState = [] { return GetHAL()->getHeadphoneMicRecordTestState(); };
     callbacks.headphoneDetected = [] { return GetHAL()->headPhoneDetect(); };
     AudioToolConfig config;
     config.kind = AudioToolKind::Headphone;
+    config.hasStop = true;
     config.title = "Headphone";
     config.description = "Record from the headset microphone and play back the result.";
     config.callbacks = std::move(callbacks);
@@ -200,6 +206,8 @@ std::unique_ptr<mooncake::AppAbility> app_media_audio::makeHeadphoneApp()
 std::unique_ptr<mooncake::AppAbility> app_media_audio::makeMusicApp()
 {
     AudioToolCallbacks callbacks;
+    callbacks.status = [] { return GetHAL()->audioGetStatus(); };
+    callbacks.stop = [] { GetHAL()->audioCancel(); };
     callbacks.start = [] { GetHAL()->startPlayMusicTest(); };
     callbacks.stop = [] { GetHAL()->stopPlayMusicTest(); };
     callbacks.musicState = [] { return GetHAL()->getMusicPlayTestState(); };

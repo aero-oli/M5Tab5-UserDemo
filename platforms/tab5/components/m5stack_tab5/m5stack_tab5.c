@@ -5,6 +5,8 @@
  */
 
 #include "sdkconfig.h"
+#include "bsp/audio_codec_transition.h"
+#include <string.h>
 #include "driver/gpio.h"
 #include "driver/ledc.h"
 #include "esp_err.h"
@@ -693,6 +695,7 @@ static esp_codec_dev_handle_t play_dev_handle;
 static esp_codec_dev_handle_t record_dev_handle;
 static bsp_codec_config_t g_codec_handle;
 static int volume;
+static bool codec_configuration_fault = false;
 
 /* Can be used for `i2s_std_gpio_config_t` and/or `i2s_std_config_t` initialization */
 #define BSP_I2S_GPIO_CFG                                                                                           \
@@ -872,17 +875,17 @@ esp_codec_dev_handle_t bsp_audio_codec_microphone_init(void)
 
 static esp_err_t bsp_i2s_read(void* audio_buffer, size_t len, size_t* bytes_read, uint32_t timeout_ms)
 {
-    esp_err_t ret = ESP_OK;
-    ret           = esp_codec_dev_read(record_dev_handle, audio_buffer, len);
-    *bytes_read   = len;
+    esp_err_t ret = codec_configuration_fault ? ESP_ERR_INVALID_STATE :
+                    esp_codec_dev_read(record_dev_handle, audio_buffer, len);
+    *bytes_read   = ret == ESP_OK ? len : 0;
     return ret;
 }
 
 static esp_err_t bsp_i2s_write(void* audio_buffer, size_t len, size_t* bytes_written, uint32_t timeout_ms)
 {
-    esp_err_t ret  = ESP_OK;
-    ret            = esp_codec_dev_write(play_dev_handle, audio_buffer, len);
-    *bytes_written = len;
+    esp_err_t ret = codec_configuration_fault ? ESP_ERR_INVALID_STATE :
+                    esp_codec_dev_write(play_dev_handle, audio_buffer, len);
+    *bytes_written = ret == ESP_OK ? len : 0;
     return ret;
 }
 
@@ -924,57 +927,115 @@ bsp_codec_config_t* bsp_get_codec_handle(void)
     return &g_codec_handle;
 }
 
+// TX and four-slot TDM RX share an I2S data interface and sample clock.
+// These callbacks run only under the HAL's exclusive audio session.
+static int codec_close_output(void* ctx) { (void)ctx; return esp_codec_dev_close(play_dev_handle); }
+static int codec_close_input(void* ctx) { (void)ctx; return esp_codec_dev_close(record_dev_handle); }
+static int codec_channels_enable(bool enable)
+{
+    // Codec close/open already changes these initialized channels. Repeating a
+    // requested state returns INVALID_STATE; it is safe under exclusive ownership.
+    esp_err_t output = enable ? i2s_channel_enable(i2s_tx_chan) : i2s_channel_disable(i2s_tx_chan);
+    esp_err_t input = enable ? i2s_channel_enable(i2s_rx_chan) : i2s_channel_disable(i2s_rx_chan);
+    if (output == ESP_ERR_INVALID_STATE) output = ESP_OK;
+    if (input == ESP_ERR_INVALID_STATE) input = ESP_OK;
+    return output != ESP_OK ? output : input;
+}
+static int codec_disable(void* ctx) { (void)ctx; return codec_channels_enable(false); }
+static int codec_enable(void* ctx) { (void)ctx; return codec_channels_enable(true); }
+
+static esp_codec_dev_sample_info_t codec_input_format(const audio_codec_formats_t* formats)
+{
+    esp_codec_dev_sample_info_t info = {
+        .sample_rate = formats->rate, .channel = formats->input_channels, .bits_per_sample = formats->input_bits,
+    };
+    return info;
+}
+static esp_codec_dev_sample_info_t codec_output_format(const audio_codec_formats_t* formats)
+{
+    esp_codec_dev_sample_info_t info = {
+        .sample_rate = formats->rate, .channel = formats->output_channels, .bits_per_sample = formats->output_bits,
+    };
+    return info;
+}
+static int codec_format_input(void* ctx, const audio_codec_formats_t* formats)
+{
+    (void)ctx;
+    esp_codec_dev_sample_info_t info = codec_input_format(formats);
+    return i2s_data_if->set_fmt(i2s_data_if, ESP_CODEC_DEV_TYPE_IN, &info);
+}
+static int codec_open_input(void* ctx, const audio_codec_formats_t* formats)
+{
+    (void)ctx;
+    esp_codec_dev_sample_info_t info = codec_input_format(formats);
+    return esp_codec_dev_open(record_dev_handle, &info);
+}
+static int codec_format_output(void* ctx, const audio_codec_formats_t* formats)
+{
+    (void)ctx;
+    esp_codec_dev_sample_info_t info = codec_output_format(formats);
+    return i2s_data_if->set_fmt(i2s_data_if, ESP_CODEC_DEV_TYPE_OUT, &info);
+}
+static int codec_open_output(void* ctx, const audio_codec_formats_t* formats)
+{
+    (void)ctx;
+    esp_codec_dev_sample_info_t info = codec_output_format(formats);
+    return esp_codec_dev_open(play_dev_handle, &info);
+}
+
+static esp_err_t bsp_codec_set_formats(const audio_codec_formats_t* formats)
+{
+    if (codec_configuration_fault || !play_dev_handle || !record_dev_handle || !i2s_data_if)
+        return ESP_ERR_INVALID_STATE;
+    // The installed esp_codec_dev_open ignores data-interface format/enable
+    // failures. Check those boundaries explicitly as part of the transaction.
+    const audio_codec_transition_ops_t ops = {
+        .close_output = codec_close_output, .close_input = codec_close_input,
+        .disable = codec_disable, .format_input = codec_format_input, .open_input = codec_open_input,
+        .format_output = codec_format_output, .open_output = codec_open_output, .enable = codec_enable,
+    };
+    const audio_codec_transition_result_t result = audio_codec_transition(formats, &ops);
+    if (!result.cleanup_succeeded) {
+        codec_configuration_fault = true; // No IO or further reconfiguration after unverified cleanup.
+        ESP_LOGE(TAG, "Codec configuration cleanup failed; audio disabled until restart");
+    }
+    return result.error;
+}
+
 static esp_err_t bsp_codec_es8388_set(uint32_t rate, uint32_t bps, i2s_slot_mode_t ch)
 {
-    esp_err_t ret = ESP_OK;
-
-    esp_codec_dev_sample_info_t fs = {
-        .sample_rate     = rate,
-        .channel         = ch,
-        .bits_per_sample = bps,
-    };
-
-    if (play_dev_handle) {
-        ret = esp_codec_dev_close(play_dev_handle);
-    }
-    ret = esp_codec_dev_open(play_dev_handle, &fs);
-
-    return ret;
+    const audio_codec_formats_t formats = audio_codec_playback_formats(rate, bps, ch);
+    return bsp_codec_set_formats(&formats);
 }
 
 static esp_err_t bsp_codec_es7210_set(uint32_t rate, uint32_t bps, i2s_slot_mode_t ch)
 {
-    esp_err_t ret = ESP_OK;
-
-    esp_codec_dev_sample_info_t fs = {
-        .sample_rate     = rate,
-        .channel         = ch,
-        .bits_per_sample = bps,
-    };
-
-    if (record_dev_handle) {
-        ret = esp_codec_dev_close(record_dev_handle);
-    }
-    ret = esp_codec_dev_open(record_dev_handle, &fs);
-
-    // esp_codec_dev_set_in_gain(record_dev_handle, 80.0); // Set codec input gain
-
-    return ret;
+    const audio_codec_formats_t formats = audio_codec_record_formats(rate, bps, ch);
+    return bsp_codec_set_formats(&formats);
 }
 
 void bsp_codec_init(void)
 {
     play_dev_handle = bsp_audio_codec_speaker_init();
-    assert((play_dev_handle) && "play_dev_handle not initialized");
+    if (!play_dev_handle) {
+        ESP_LOGE(TAG, "Speaker codec unavailable");
+        return;
+    }
 
     record_dev_handle = bsp_audio_codec_microphone_init();
-    assert((record_dev_handle) && "record_dev_handle not initialized");
+    if (!record_dev_handle) {
+        ESP_LOGE(TAG, "Microphone codec unavailable");
+        return;
+    }
 
     // bsp_codec_es7210_set(16000, 16, 2);
     // bsp_codec_es8388_set(16000, 16, 2);
     // bsp_codec_es7210_set(48000, 16, 2);
-    bsp_codec_es7210_set(48000, 16, 4);
-    bsp_codec_es8388_set(48000, 16, 2);
+    esp_err_t ret = bsp_codec_es7210_set(48000, 16, 4);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Codec clock setup failed: %d", ret);
+        return;
+    }
 
     /* 初始化 codec handle */
     bsp_codec_config_t* codec_cfg  = bsp_get_codec_handle();  // 获取 codec handle
@@ -987,7 +1048,11 @@ void bsp_codec_init(void)
     codec_cfg->codec_reconfig_fn   = bsp_codec_es7210_set;
     codec_cfg->i2s_reconfig_clk_fn = bsp_codec_es8388_set;
 
-    codec_cfg->set_volume(80);
+    ret = codec_cfg->set_volume(80);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Codec volume setup failed: %d", ret);
+        memset(codec_cfg, 0, sizeof(*codec_cfg));
+    }
 }
 
 uint8_t bsp_codec_feed_channel(void)

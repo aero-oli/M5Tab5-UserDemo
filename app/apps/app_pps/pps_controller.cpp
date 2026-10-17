@@ -8,8 +8,6 @@
 #include <cmath>
 #include <mutex>
 #include <optional>
-#include <thread>
-#include <chrono>
 #include <mooncake_log.h>
 
 using namespace app_pps;
@@ -77,6 +75,8 @@ struct PpsController::Worker {
         const bool ok = pps.setOutputEnabled(enabled) && pps.readOutputEnabled(actual) && actual == enabled;
         std::lock_guard<std::mutex> lock(mutex);
         state.output = ok ? (enabled ? OutputState::Enabled : OutputState::Disabled) : OutputState::Unknown;
+        state.off = enabled ? (offRequested ? OffState::Pending : OffState::NotRequested)
+                            : (ok ? OffState::Confirmed : OffState::Unconfirmed);
         state.telemetryFresh = false;
         if (ok) {
             state.telemetry.outputEnabled = enabled;
@@ -276,6 +276,7 @@ PpsController::~PpsController()
         _worker->command.reset();
         if (_worker->state.identity.moduleId == pps::EXPECTED_MODULE_ID) {
             _worker->offRequested = true;
+            _worker->state.off = OffState::Pending;
             _worker->state.commandPending = true;
             _worker->state.output = OutputState::Unknown;
             _worker->state.commandStatus = "Disabling output...";
@@ -323,19 +324,28 @@ void PpsController::shutdown()
         // Automatic cleanup only writes to an identified PPS. Explicit Emergency Off remains unconditional.
         if (worker->state.identity.moduleId == pps::EXPECTED_MODULE_ID) {
             worker->offRequested = true;
+            worker->state.off = OffState::Pending;
+            worker->state.commandPending = true;
+            worker->state.output = OutputState::Unknown;
         }
     }
     kick(worker);
-    // Only process teardown waits. No widget callback or app Back path joins a worker.
-    for (;;) {
-        {
-            std::lock_guard<std::mutex> lock(worker->mutex);
-            if (!worker->working) {
-                return;
-            }
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
+    // The process-wide bounded worker drain owns teardown waiting.
+}
+
+std::optional<PpsState> PpsController::backgroundState()
+{
+    auto worker = defaultWorker();
+    return worker ? std::optional<PpsState>(worker->snapshot()) : std::nullopt;
+}
+
+std::string PpsController::outputSummary(const PpsState& state)
+{
+    if (state.off == OffState::Pending) return "Off pending";
+    if (state.off == OffState::Unconfirmed) return "OFF UNCONFIRMED";
+    if (state.output == OutputState::Enabled) return "Output ON";
+    if (state.output == OutputState::Disabled) return "Output off";
+    return "Output unknown";
 }
 
 void PpsController::update(uint32_t nowMs)
@@ -443,6 +453,7 @@ bool PpsController::emergencyOff(uint32_t)
     {
         std::lock_guard<std::mutex> lock(_worker->mutex);
         _worker->offRequested = true;
+        _worker->state.off = OffState::Pending;
         _worker->command.reset();
         _worker->state.commandPending = true;
         _worker->state.output = OutputState::Unknown;

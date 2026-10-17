@@ -39,10 +39,13 @@ void test_adjusts_brightness_in_steps_and_clamps()
         [](uint8_t) {});
 
     assert(controller.adjustBrightness(10) == 100);
-    assert(controller.adjustBrightness(-200) == 0);
+    assert(controller.adjustBrightness(-200) == 5);
     assert(calls.size() == 2);
     assert(calls[0].value == 100);
-    assert(calls[1].value == 0);
+    assert(calls[1].value == 5);
+    assert(controller.adjustBrightness(-10) == 5);
+    brightness = 0; // A prior explicit sleep must not make ordinary adjustment stay dark.
+    assert(controller.adjustBrightness(-10) == 5);
 }
 
 void test_adjusts_volume_in_steps_and_clamps()

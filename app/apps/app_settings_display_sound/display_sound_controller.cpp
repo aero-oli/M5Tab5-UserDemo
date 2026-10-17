@@ -27,7 +27,8 @@ DisplaySoundSnapshot DisplaySoundController::read() const
 
 uint8_t DisplaySoundController::adjustBrightness(int delta)
 {
-    const auto next = clampPercent(static_cast<int>(_readBrightnessFn()) + delta);
+    // Zero is reserved for the explicit Screen Off action, which installs touch wake.
+    const auto next = static_cast<uint8_t>(std::clamp(static_cast<int>(_readBrightnessFn()) + delta, 5, 100));
     _writeBrightnessFn(next);
     return next;
 }

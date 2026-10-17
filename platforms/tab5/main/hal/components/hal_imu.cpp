@@ -23,7 +23,10 @@ static const std::string _tag = "imu";
 void HalEsp32::clearImuIrq()
 {
     mclog::tagInfo(_tag, "clear imu irq");
-    accel_gyro_bmi270_init(bsp_i2c_get_handle());
+    if (accel_gyro_bmi270_init(bsp_i2c_get_handle()) != ESP_OK) {
+        mclog::tagError(_tag, "IMU initialization failed");
+        return;
+    }
     if (accel_gyro_bmi270_check_irq()) {
         accel_gyro_bmi270_clear_irq_int();
         mclog::tagInfo(_tag, "imu irq detected! clear it!");
@@ -34,20 +37,23 @@ void HalEsp32::imu_init()
 {
     mclog::tagInfo(_tag, "imu init");
 
-    accel_gyro_bmi270_init(bsp_i2c_get_handle());
+    if (accel_gyro_bmi270_init(bsp_i2c_get_handle()) != ESP_OK) {
+        mclog::tagError(_tag, "IMU initialization failed");
+        return;
+    }
     if (accel_gyro_bmi270_check_irq()) {
         accel_gyro_bmi270_clear_irq_int();
         mclog::tagInfo(_tag, "imu irq detected! clear it!");
     }
-    accel_gyro_bmi270_enable_sensor();
+    if (!accel_gyro_bmi270_enable_sensor()) mclog::tagError(_tag, "IMU normal sampling configuration failed");
 }
 
 void HalEsp32::updateImuData()
 {
     std::lock_guard<std::mutex> lock(_imuIoMutex);
     IMUData_t data;
-    static struct bmi2_sens_data bmi_sensor_data;
-    accel_gyro_bmi270_get_data(&bmi_sensor_data);
+    struct bmi2_sens_data bmi_sensor_data = {};
+    if (!accel_gyro_bmi270_get_data(&bmi_sensor_data)) return;
 
     /* 根据设置量程转换 */
     data.accelX = bmi_sensor_data.acc.y / 835.92 / 10.0f;  // m/s^2

@@ -536,6 +536,7 @@ bool HalDesktop::i2cWriteRegister(hal::ModuleBus bus, uint8_t address, uint8_t r
     if (!i2cProbe(bus, address)) {
         return false;
     }
+    if (reg == 0x04 && length == 1 && data[0] == 0 && std::getenv("M5TAB5_DESKTOP_PPS_OFF_FAIL")) return false;
 
     auto& registers = pps_registers();
     registers[reg] = std::vector<uint8_t>(data, data + length);
