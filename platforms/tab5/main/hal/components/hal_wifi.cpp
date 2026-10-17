@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 #include "hal/hal_esp32.h"
+#include <hal/network_state.h>
 #include <algorithm>
 #include <cstring>
 #include <memory>
@@ -35,18 +36,20 @@ constexpr const char* kNvsSsid = "ssid";
 constexpr const char* kNvsPass = "pass";
 constexpr int kMaxStaConn = 4;
 
+// Initialization and HTTP-server ownership are exclusive to the command lease.
 bool s_wifi_ready = false;
 bool s_sta_netif_ready = false;
 bool s_ap_netif_ready = false;
 httpd_handle_t s_server = nullptr;
-hal::HalBase::WifiStatus s_wifi_status;
-hal::HalBase::OtaStatus s_ota_status;
-TaskHandle_t s_ota_task = nullptr;
+hal::NetworkState s_state;
+std::atomic<bool> s_command_busy {false};
 
 static void set_status(hal::HalBase::WifiConnectionState state, const std::string& error = "")
 {
-    s_wifi_status.state = state;
-    s_wifi_status.lastError = error;
+    s_state.update([&](auto& value) {
+        value.wifi.state = state;
+        value.wifi.lastError = error;
+    });
 }
 
 static esp_err_t root_handler(httpd_req_t* req)
@@ -80,14 +83,20 @@ static void stop_webserver()
 static void event_handler(void*, esp_event_base_t event_base, int32_t event_id, void* event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        set_status(hal::HalBase::WifiConnectionState::Failed, "Disconnected");
-        s_wifi_status.ipAddress.clear();
+        s_state.update([](auto& value) {
+            value.wifi.state = hal::HalBase::WifiConnectionState::Failed;
+            value.wifi.lastError = "Disconnected";
+            value.wifi.ipAddress.clear();
+        });
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         auto* event = static_cast<ip_event_got_ip_t*>(event_data);
         char ip[16];
         std::snprintf(ip, sizeof(ip), IPSTR, IP2STR(&event->ip_info.ip));
-        s_wifi_status.ipAddress = ip;
-        set_status(hal::HalBase::WifiConnectionState::Connected);
+        s_state.update([&](auto& value) {
+            value.wifi.ipAddress = ip;
+            value.wifi.state = hal::HalBase::WifiConnectionState::Connected;
+            value.wifi.lastError.clear();
+        });
     }
 }
 
@@ -168,9 +177,11 @@ static void erase_credentials()
 static void ota_task(void* param)
 {
     std::unique_ptr<std::string> url(static_cast<std::string*>(param));
-    s_ota_status.state = hal::HalBase::OtaState::Downloading;
-    s_ota_status.progress = 5;
-    s_ota_status.lastError.clear();
+    s_state.update([](auto& value) {
+        value.ota.state = hal::HalBase::OtaState::Downloading;
+        value.ota.progress = 5;
+        value.ota.lastError.clear();
+    });
 
     esp_http_client_config_t http_config = {};
     http_config.url = url->c_str();
@@ -180,17 +191,19 @@ static void ota_task(void* param)
     esp_https_ota_config_t ota_config = {};
     ota_config.http_config = &http_config;
 
-    s_ota_status.progress = 20;
+    s_state.update([](auto& value) { value.ota.progress = 20; });
     esp_err_t ret = esp_https_ota(&ota_config);
-    if (ret == ESP_OK) {
-        s_ota_status.state = hal::HalBase::OtaState::Complete;
-        s_ota_status.progress = 100;
-        s_ota_status.rebootRequired = true;
-    } else {
-        s_ota_status.state = hal::HalBase::OtaState::Failed;
-        s_ota_status.lastError = "OTA failed";
-    }
-    s_ota_task = nullptr;
+    s_state.update([&](auto& value) {
+        if (ret == ESP_OK) {
+            value.ota.state = hal::HalBase::OtaState::Complete;
+            value.ota.progress = 100;
+            value.ota.rebootRequired = true;
+        } else {
+            value.ota.state = hal::HalBase::OtaState::Failed;
+            value.ota.lastError = "OTA failed";
+        }
+        value.otaActive = false;
+    });
     vTaskDelete(nullptr);
 }
 
@@ -199,7 +212,8 @@ static void ota_task(void* param)
 bool HalEsp32::wifi_init()
 {
     mclog::tagInfo(TAG, "wifi init");
-    return ensure_wifi();
+    hal::NetworkCommandLease command(s_command_busy);
+    return command && ensure_wifi();
 }
 
 void HalEsp32::wifi_set_status(WifiConnectionState state, const std::string& error)
@@ -209,15 +223,18 @@ void HalEsp32::wifi_set_status(WifiConnectionState state, const std::string& err
 
 void HalEsp32::setExtAntennaEnable(bool enable)
 {
-    _ext_antenna_enable = enable;
-    s_wifi_status.extAntennaEnabled = enable;
-    mclog::tagInfo(TAG, "set ext antenna enable: {}", _ext_antenna_enable);
-    bsp_set_ext_antenna_enable(_ext_antenna_enable);
+    hal::NetworkCommandLease command(s_command_busy);
+    if (!command) {
+        return;
+    }
+    bsp_set_ext_antenna_enable(enable);
+    s_state.update([&](auto& value) { value.wifi.extAntennaEnabled = enable; });
+    mclog::tagInfo(TAG, "set ext antenna enable: {}", enable);
 }
 
 bool HalEsp32::getExtAntennaEnable()
 {
-    return _ext_antenna_enable;
+    return s_state.snapshot().wifi.extAntennaEnabled;
 }
 
 void HalEsp32::startWifiAp()
@@ -227,12 +244,15 @@ void HalEsp32::startWifiAp()
 
 hal::HalBase::WifiStatus HalEsp32::wifiGetStatus()
 {
-    s_wifi_status.extAntennaEnabled = _ext_antenna_enable;
-    return s_wifi_status;
+    return s_state.snapshot().wifi;
 }
 
 std::vector<hal::HalBase::WifiNetwork> HalEsp32::wifiScan()
 {
+    hal::NetworkCommandLease command(s_command_busy);
+    if (!command) {
+        return {};
+    }
     std::vector<WifiNetwork> networks;
     if (!ensure_wifi()) {
         return networks;
@@ -262,6 +282,10 @@ std::vector<hal::HalBase::WifiNetwork> HalEsp32::wifiScan()
 
 bool HalEsp32::wifiConnect(const std::string& ssid, const std::string& password)
 {
+    hal::NetworkCommandLease command(s_command_busy);
+    if (!command) {
+        return false;
+    }
     if (!ensure_wifi()) {
         return false;
     }
@@ -277,9 +301,12 @@ bool HalEsp32::wifiConnect(const std::string& ssid, const std::string& password)
     esp_wifi_set_mode(WIFI_MODE_STA);
     esp_wifi_set_config(WIFI_IF_STA, &config);
     esp_wifi_start();
-    s_wifi_status.mode = WifiMode::Station;
-    s_wifi_status.ssid = ssid;
-    set_status(WifiConnectionState::Connecting);
+    s_state.update([&](auto& value) {
+        value.wifi.mode = WifiMode::Station;
+        value.wifi.ssid = ssid;
+        value.wifi.state = WifiConnectionState::Connecting;
+        value.wifi.lastError.clear();
+    });
     save_credentials(ssid, password);
     esp_err_t ret = esp_wifi_connect();
     if (ret != ESP_OK) {
@@ -291,20 +318,40 @@ bool HalEsp32::wifiConnect(const std::string& ssid, const std::string& password)
 
 void HalEsp32::wifiDisconnect()
 {
+    hal::NetworkCommandLease command(s_command_busy);
+    if (!command) {
+        return;
+    }
     if (!ensure_wifi()) {
         return;
     }
     esp_wifi_disconnect();
     esp_wifi_stop();
-    s_wifi_status = {};
-    s_wifi_status.extAntennaEnabled = _ext_antenna_enable;
+    s_state.update([](auto& value) {
+        const bool antenna = value.wifi.extAntennaEnabled;
+        value.wifi = {};
+        value.wifi.extAntennaEnabled = antenna;
+    });
 }
 
 void HalEsp32::wifiForgetCredentials()
 {
+    hal::NetworkCommandLease command(s_command_busy);
+    if (!command) {
+        return;
+    }
     erase_credentials();
-    wifiDisconnect();
-    set_status(WifiConnectionState::Idle, "Saved credentials cleared");
+    if (!ensure_wifi()) {
+        return;
+    }
+    esp_wifi_disconnect();
+    esp_wifi_stop();
+    s_state.update([](auto& value) {
+        const bool antenna = value.wifi.extAntennaEnabled;
+        value.wifi = {};
+        value.wifi.extAntennaEnabled = antenna;
+        value.wifi.lastError = "Saved credentials cleared";
+    });
 }
 
 void HalEsp32::wifiSetExtAntennaEnabled(bool enable)
@@ -314,6 +361,10 @@ void HalEsp32::wifiSetExtAntennaEnabled(bool enable)
 
 bool HalEsp32::wifiStartAccessPoint()
 {
+    hal::NetworkCommandLease command(s_command_busy);
+    if (!command) {
+        return false;
+    }
     if (!ensure_wifi()) {
         return false;
     }
@@ -328,50 +379,74 @@ bool HalEsp32::wifiStartAccessPoint()
     esp_wifi_set_config(WIFI_IF_AP, &config);
     esp_wifi_start();
     start_webserver();
-    s_wifi_status.mode = WifiMode::AccessPoint;
-    s_wifi_status.ssid = kApSsid;
-    s_wifi_status.ipAddress = "192.168.4.1";
-    set_status(WifiConnectionState::ApRunning);
+    s_state.update([](auto& value) {
+        value.wifi.mode = WifiMode::AccessPoint;
+        value.wifi.ssid = kApSsid;
+        value.wifi.ipAddress = "192.168.4.1";
+        value.wifi.state = WifiConnectionState::ApRunning;
+        value.wifi.lastError.clear();
+    });
     return true;
 }
 
 void HalEsp32::wifiStopAccessPoint()
 {
+    hal::NetworkCommandLease command(s_command_busy);
+    if (!command) {
+        return;
+    }
     stop_webserver();
     esp_wifi_stop();
-    s_wifi_status = {};
-    s_wifi_status.extAntennaEnabled = _ext_antenna_enable;
+    s_state.update([](auto& value) {
+        const bool antenna = value.wifi.extAntennaEnabled;
+        value.wifi = {};
+        value.wifi.extAntennaEnabled = antenna;
+    });
 }
 
 hal::HalBase::OtaStatus HalEsp32::otaGetStatus()
 {
-    return s_ota_status;
+    return s_state.snapshot().ota;
 }
 
 bool HalEsp32::otaStartFromUrl(const std::string& url)
 {
-    if (s_ota_task != nullptr) {
+    hal::NetworkCommandLease command(s_command_busy);
+    if (!command) {
         return false;
     }
-    if (s_wifi_status.state != WifiConnectionState::Connected) {
-        s_ota_status = {};
-        s_ota_status.state = OtaState::Failed;
-        s_ota_status.lastError = "Connect Wi-Fi before OTA";
+    const auto snapshot = s_state.snapshot();
+    if (snapshot.otaActive) {
         return false;
     }
-    if (url.rfind("http://", 0) != 0 && url.rfind("https://", 0) != 0) {
-        s_ota_status = {};
-        s_ota_status.state = OtaState::Failed;
-        s_ota_status.lastError = "URL must start with http:// or https://";
+    std::string error;
+    if (snapshot.wifi.state != WifiConnectionState::Connected) {
+        error = "Connect Wi-Fi before OTA";
+    } else if (url.rfind("http://", 0) != 0 && url.rfind("https://", 0) != 0) {
+        error = "URL must start with http:// or https://";
+    }
+    if (!error.empty()) {
+        s_state.update([&](auto& value) {
+            value.ota = {};
+            value.ota.state = OtaState::Failed;
+            value.ota.lastError = error;
+        });
         return false;
     }
     auto* copy = new std::string(url);
-    s_ota_status = {};
-    s_ota_status.state = OtaState::Checking;
-    if (xTaskCreate(ota_task, "ota", 8192, copy, 5, &s_ota_task) != pdPASS) {
+    // Reserve before task creation: the task may run and finish immediately.
+    s_state.update([](auto& value) {
+        value.ota = {};
+        value.ota.state = OtaState::Checking;
+        value.otaActive = true;
+    });
+    if (xTaskCreate(ota_task, "ota", 8192, copy, 5, nullptr) != pdPASS) {
         delete copy;
-        s_ota_status.state = OtaState::Failed;
-        s_ota_status.lastError = "Could not start OTA task";
+        s_state.update([](auto& value) {
+            value.otaActive = false;
+            value.ota.state = OtaState::Failed;
+            value.ota.lastError = "Could not start OTA task";
+        });
         return false;
     }
     return true;
@@ -379,14 +454,16 @@ bool HalEsp32::otaStartFromUrl(const std::string& url)
 
 void HalEsp32::otaCancel()
 {
-    if (s_ota_task != nullptr) {
-        s_ota_status.lastError = "Cancel requested; waiting for OTA task";
-    }
+    s_state.update([](auto& value) {
+        if (value.otaActive) {
+            value.ota.lastError = "Cancel requested; waiting for OTA task";
+        }
+    });
 }
 
 void HalEsp32::otaRebootToApply()
 {
-    if (s_ota_status.rebootRequired) {
+    if (s_state.snapshot().ota.rebootRequired) {
         esp_restart();
     }
 }

@@ -53,9 +53,32 @@ static void test_rejects_concurrent_jobs()
     assert(secondCalls.load() == 0);
 }
 
+static void test_runner_lifetime_and_shutdown_admission()
+{
+    std::atomic<bool> release{false};
+    std::atomic<bool> complete{false};
+    {
+        app_runtime::AsyncJobRunner runner;
+        assert(runner.start("outlives owner", [&] {
+            while (!release.load()) std::this_thread::sleep_for(1ms);
+            complete = true;
+        }));
+    }
+    assert(!app_runtime::AsyncJobRunner::shutdownAll(5));
+    assert(!app_runtime::AsyncJobRunner::resumeAll());
+    app_runtime::AsyncJobRunner other;
+    assert(!other.start("after shutdown", [] {}));
+    release = true;
+    assert(app_runtime::AsyncJobRunner::waitForAll(2000));
+    assert(complete);
+    assert(app_runtime::AsyncJobRunner::resumeAll());
+}
+
 int main()
 {
     test_runs_job_and_clears_busy();
     test_rejects_concurrent_jobs();
+    test_runner_lifetime_and_shutdown_admission();
+    assert(app_runtime::AsyncJobRunner::waitForAll(2000));
     return 0;
 }

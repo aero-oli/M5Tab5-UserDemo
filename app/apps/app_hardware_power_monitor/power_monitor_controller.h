@@ -8,10 +8,13 @@
 #include <functional>
 #include <string>
 #include <hal/hal.h>
+#include <apps/runtime/async_sample.h>
 
 namespace app_hardware_power_monitor {
 
 struct PowerSample {
+    bool hasSample = false;
+    bool pending = false;
     float busVoltage = 0.0f;
     float current = 0.0f;
     float outputPower = 0.0f;
@@ -39,7 +42,7 @@ private:
     UpdateFn _updateFn;
     DataFn _dataFn;
     CpuTempFn _cpuTempFn;
-    PowerSample _cached;
+    app_runtime::AsyncSample<PowerSample> _samples;
 };
 
 }  // namespace app_hardware_power_monitor

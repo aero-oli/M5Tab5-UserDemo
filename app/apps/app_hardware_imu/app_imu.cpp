@@ -24,7 +24,7 @@ class AppImu : public mooncake::AppAbility {
 public:
     AppImu()
         : _controller([] { GetHAL()->updateImuData(); },
-                      [] { return GetHAL()->imuData; })
+                      [] { return GetHAL()->getImuData(); })
     {
         setAppInfo().name = "IMU";
     }
@@ -101,12 +101,13 @@ private:
     void refresh()
     {
         const auto sample = _controller.sample();
-        setMetric(_accelX, "Accel X", ImuController::formatAccel(sample.accelX).c_str());
-        setMetric(_accelY, "Accel Y", ImuController::formatAccel(sample.accelY).c_str());
-        setMetric(_accelZ, "Accel Z", ImuController::formatAccel(sample.accelZ).c_str());
-        setMetric(_gyroX, "Gyro X", ImuController::formatGyro(sample.gyroX).c_str());
-        setMetric(_gyroY, "Gyro Y", ImuController::formatGyro(sample.gyroY).c_str());
-        setMetric(_gyroZ, "Gyro Z", ImuController::formatGyro(sample.gyroZ).c_str());
+        lv_label_set_text(_detail, sample.hasSample ? "Sampling: up to 4 Hz while this app is open" : "Waiting for first IMU sample...");
+        setMetric(_accelX, "Accel X", sample.hasSample ? ImuController::formatAccel(sample.accelX).c_str() : "--");
+        setMetric(_accelY, "Accel Y", sample.hasSample ? ImuController::formatAccel(sample.accelY).c_str() : "--");
+        setMetric(_accelZ, "Accel Z", sample.hasSample ? ImuController::formatAccel(sample.accelZ).c_str() : "--");
+        setMetric(_gyroX, "Gyro X", sample.hasSample ? ImuController::formatGyro(sample.gyroX).c_str() : "--");
+        setMetric(_gyroY, "Gyro Y", sample.hasSample ? ImuController::formatGyro(sample.gyroY).c_str() : "--");
+        setMetric(_gyroZ, "Gyro Z", sample.hasSample ? ImuController::formatGyro(sample.gyroZ).c_str() : "--");
     }
 
     void setMetric(lv_obj_t* card, const char* title, const char* value)

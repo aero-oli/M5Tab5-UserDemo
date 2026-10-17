@@ -162,13 +162,28 @@ public:
         float gyroY  = 0.0f;
         float gyroZ  = 0.0f;
     };
-    IMUData_t imuData;
+    IMUData_t getImuData()
+    {
+        std::lock_guard<std::mutex> lock(_imuMutex);
+        return _imuData;
+    }
     virtual void updateImuData()
     {
     }
     virtual void clearImuIrq()
     {
     }
+
+protected:
+    std::mutex _imuMutex;
+    std::mutex _imuIoMutex;
+    IMUData_t _imuData;
+    void publishImuData(const IMUData_t& data)
+    {
+        std::lock_guard<std::mutex> lock(_imuMutex);
+        _imuData = data;
+    }
+public:
 
     /* ----------------------------------- RTC ---------------------------------- */
     virtual void getRtcTime(tm* time)

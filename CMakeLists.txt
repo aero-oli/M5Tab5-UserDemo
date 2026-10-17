@@ -153,12 +153,14 @@ target_compile_features(gpio_controller_tests PUBLIC cxx_std_17)
 add_test(NAME gpio_controller_tests COMMAND gpio_controller_tests)
 
 add_executable(power_monitor_controller_tests
+    app/apps/runtime/async_job_runner.cpp
     tests/test_power_monitor_controller.cpp
     app/apps/app_hardware_power_monitor/power_monitor_controller.cpp
 )
 target_include_directories(power_monitor_controller_tests PUBLIC app)
 target_include_directories(power_monitor_controller_tests SYSTEM PUBLIC dependencies/lvgl)
 target_compile_features(power_monitor_controller_tests PUBLIC cxx_std_17)
+target_link_libraries(power_monitor_controller_tests PUBLIC pthread)
 add_test(NAME power_monitor_controller_tests COMMAND power_monitor_controller_tests)
 
 add_executable(switches_controller_tests
@@ -209,12 +211,14 @@ target_compile_features(rtc_controller_tests PUBLIC cxx_std_17)
 add_test(NAME rtc_controller_tests COMMAND rtc_controller_tests)
 
 add_executable(imu_controller_tests
+    app/apps/runtime/async_job_runner.cpp
     tests/test_imu_controller.cpp
     app/apps/app_hardware_imu/imu_controller.cpp
 )
 target_include_directories(imu_controller_tests PUBLIC app)
 target_include_directories(imu_controller_tests SYSTEM PUBLIC dependencies/lvgl)
 target_compile_features(imu_controller_tests PUBLIC cxx_std_17)
+target_link_libraries(imu_controller_tests PUBLIC pthread)
 add_test(NAME imu_controller_tests COMMAND imu_controller_tests)
 
 add_executable(com_monitor_controller_tests
@@ -387,3 +391,10 @@ add_executable(updates_layout_tests
 target_include_directories(updates_layout_tests PUBLIC app)
 target_compile_features(updates_layout_tests PUBLIC cxx_std_17)
 add_test(NAME updates_layout_tests COMMAND updates_layout_tests)
+
+add_executable(network_state_tests tests/test_network_state.cpp)
+target_include_directories(network_state_tests PUBLIC app)
+target_include_directories(network_state_tests SYSTEM PUBLIC dependencies/lvgl)
+target_compile_features(network_state_tests PUBLIC cxx_std_17)
+target_link_libraries(network_state_tests PUBLIC pthread)
+add_test(NAME network_state_tests COMMAND network_state_tests)

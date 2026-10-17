@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 #include "hal/hal_esp32.h"
+#include <apps/runtime/performance_telemetry.h>
 #include <hal/profiles/tab5_gpio.h>
 #include <array>
 #include <mutex>
@@ -258,14 +259,27 @@ uint8_t HalEsp32::getDisplayBrightness()
     return _current_lcd_brightness;
 }
 
+namespace {
+thread_local unsigned displayLockDepth = 0;
+thread_local uint64_t displayLockStartUs = 0;
+thread_local uint64_t displayLockWaitUs = 0;
+}
 void HalEsp32::lvglLock()
 {
+    const auto started = app_runtime::monotonicMicros();
     lvgl_port_lock(0);
+    if (displayLockDepth++ == 0) {
+        displayLockStartUs = app_runtime::monotonicMicros();
+        displayLockWaitUs = displayLockStartUs - started;
+    }
 }
 
 void HalEsp32::lvglUnlock()
 {
+    const bool outer = --displayLockDepth == 0;
+    const auto held = app_runtime::monotonicMicros() - displayLockStartUs;
     lvgl_port_unlock();
+    if (outer) app_runtime::globalPerformanceTelemetry().recordLock(displayLockWaitUs, held);
 }
 
 /* -------------------------------------------------------------------------- */

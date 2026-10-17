@@ -18,6 +18,14 @@
 #include <mooncake.h>
 #include <mooncake_log.h>
 #include <string>
+#include <algorithm>
+#include <cstdlib>
+#include <lvgl.h>
+#if defined(ESP_PLATFORM)
+#include <esp_heap_caps.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#endif
 #include <thread>
 #if defined(PLATFORM_BUILD_DESKTOP)
 #include <cstdlib>
@@ -31,8 +39,48 @@
 using namespace mooncake;
 
 static const std::string _tag = "app";
-static app_runtime::UpdateScheduler _appUpdateScheduler(16);
+static lv_timer_t* _lifecycleTimer = nullptr;
+static uint64_t _renderStartedUs = 0;
+
+static void updateLifecycle(lv_timer_t*)
+{
+    const uint32_t started = GetHAL()->millis();
+    GetMooncake().update();
+    auto& perf = app_runtime::globalPerformanceTelemetry();
+    perf.recordAppUpdate(started, GetHAL()->millis());
+    perf.recordBackgroundJob(app_runtime::AsyncJobRunner::activeJobs() != 0,
+                             app_runtime::globalAsyncJobRunner().currentJob());
+#if defined(ESP_PLATFORM)
+    static uint32_t lastResourcesMs = 0;
+    if (started - lastResourcesMs >= 1000) {
+        perf.recordResources(heap_caps_get_free_size(MALLOC_CAP_8BIT),
+                             heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT),
+                             uxTaskGetStackHighWaterMark(nullptr), uxTaskGetNumberOfTasks());
+        lastResourcesMs = started;
+    }
+#endif
+}
+
+static void displayEvent(lv_event_t* event)
+{
+    const auto now = app_runtime::monotonicMicros();
+    auto& perf = app_runtime::globalPerformanceTelemetry();
+    switch (lv_event_get_code(event)) {
+        case LV_EVENT_RENDER_START: _renderStartedUs = now; break;
+        case LV_EVENT_RENDER_READY: perf.recordRender(_renderStartedUs, now); break;
+        case LV_EVENT_FLUSH_FINISH: perf.recordFlush(now); break;
+        default: break;
+    }
+}
 #if defined(PLATFORM_BUILD_DESKTOP)
+// Smoke journeys drive the same timer as normal runtime; they never bypass its owner.
+static void desktopPumpLifecycle()
+{
+    LvglLockGuard lock;
+    lv_timer_ready(_lifecycleTimer);
+    lv_timer_handler();
+}
+
 static uint32_t _desktopUpdateCount = 0;
 static uint32_t _desktopMaxUpdates = 0;
 static bool _desktopAssertLauncherUi = false;
@@ -444,7 +492,7 @@ static void desktopWaitForWifiState(hal::HalBase::WifiConnectionState state, con
 {
     const uint32_t started = GetHAL()->millis();
     while (GetHAL()->millis() - started < 2000) {
-        GetMooncake().update();
+        desktopPumpLifecycle();
         if (GetHAL()->wifiGetStatus().state == state && !app_runtime::globalAsyncJobRunner().busy()) {
             LvglLockGuard lock;
             auto* root = desktopTopFullscreenRoot();
@@ -488,7 +536,7 @@ static void desktopAssertNetworkSelection()
     }
     const uint32_t started = GetHAL()->millis();
     while (GetHAL()->millis() - started < 2000) {
-        GetMooncake().update();
+        desktopPumpLifecycle();
         {
             LvglLockGuard lock;
             auto* root = desktopTopFullscreenRoot();
@@ -608,7 +656,7 @@ static void desktopWaitForCameraState(hal::HalBase::CameraState state, const cha
 {
     const uint32_t started = GetHAL()->millis();
     while (GetHAL()->millis() - started < 3000) {
-        GetMooncake().update();
+        desktopPumpLifecycle();
         {
             LvglLockGuard lock;
             lv_timer_handler();
@@ -715,7 +763,7 @@ static void desktopWaitForPpsLabel(const char* label)
 {
     const auto started = GetHAL()->millis();
     while (GetHAL()->millis() - started < 3000) {
-        GetMooncake().update();
+        desktopPumpLifecycle();
         {
             LvglLockGuard lock;
             auto* root = desktopTopFullscreenRoot();
@@ -787,7 +835,7 @@ static void desktopAssertPpsWorkflow()
     const auto started = GetHAL()->millis();
     bool applied = false;
     while (GetHAL()->millis() - started < 3000 && !applied) {
-        GetMooncake().update();
+        desktopPumpLifecycle();
         {
             LvglLockGuard lock;
             auto* root = desktopTopFullscreenRoot();
@@ -835,7 +883,7 @@ static void desktopWaitPowerLabel(const char* text)
 {
     const auto started = GetHAL()->millis();
     while (GetHAL()->millis() - started < 3000) {
-        GetMooncake().update();
+        desktopPumpLifecycle();
         {
             LvglLockGuard lock;
             lv_timer_handler();
@@ -881,7 +929,7 @@ static void desktopAssertPowerWorkflow(int appId)
     }
     desktopPowerClick("Power Off");
     desktopPowerClick("Back");
-    GetMooncake().update();
+    desktopPumpLifecycle();
     if (GetMooncake().getAppCurrentState(appId) != AppAbility::StateRunning) {
         mclog::tagError(_tag, "Back must dismiss power confirmation before leaving app");
         std::abort();
@@ -908,10 +956,10 @@ static void desktopAssertPowerWorkflow(int appId)
     desktopWaitPowerLabel("Display off (simulated)");
     if (!GetHAL()->isDisplayAsleep() || GetHAL()->getDisplayBrightness() != 0) std::abort();
     desktopPowerClick("Back");
-    GetMooncake().update();
+    desktopPumpLifecycle();
     if (GetMooncake().getAppCurrentState(appId) != AppAbility::StateSleeping || !GetHAL()->isDisplayAsleep()) std::abort();
     if (!app_registry::registry().open(app_registry::AppKey::SettingsPower)) std::abort();
-    GetMooncake().update();
+    desktopPumpLifecycle();
     desktopWaitPowerLabel("Display off (simulated)");
     desktopPowerClick("Wake Display");
     desktopWaitPowerLabel("Display awake");
@@ -1024,7 +1072,7 @@ static void desktopAssertGpioWorkflow(int appId)
         }
     }
     if (fault == "release") {
-        GetMooncake().update();
+        desktopPumpLifecycle();
         desktopCheckGpio(GetMooncake().getAppCurrentState(appId) == AppAbility::StateRunning,
                          "Back closed with a failed release");
         unsetenv("M5TAB5_DESKTOP_GPIO_FAIL");
@@ -1107,7 +1155,7 @@ static void desktopAssertAllRegisteredAppsUi()
             mclog::tagError(_tag, "desktop app UI smoke failed to open {}", registeredApp.label);
             std::abort();
         }
-        GetMooncake().update();
+        desktopPumpLifecycle();
 
         const auto openSnapshot = desktopCaptureUiSnapshot();
         if (GetMooncake().getAppCurrentState(registeredApp.appId) != AppAbility::StateRunning ||
@@ -1160,7 +1208,7 @@ static void desktopAssertAllRegisteredAppsUi()
             }
             lv_obj_send_event(back, LV_EVENT_CLICKED, nullptr);
         }
-        GetMooncake().update();
+        desktopPumpLifecycle();
 
         if (GetMooncake().getAppCurrentState(registeredApp.appId) != AppAbility::StateSleeping) {
             mclog::tagError(_tag, "desktop app UI smoke failed to close {}", registeredApp.label);
@@ -1192,7 +1240,7 @@ static void desktopAssertAllRegisteredAppsUi()
             if (!registry.open(registeredApp.key)) {
                 std::abort();
             }
-            GetMooncake().update();
+            desktopPumpLifecycle();
             desktopWaitForPpsLabel("Output Off confirmed");
             {
                 LvglLockGuard lock;
@@ -1203,7 +1251,7 @@ static void desktopAssertAllRegisteredAppsUi()
                 }
                 lv_obj_send_event(desktopFindButton(root, "Back"), LV_EVENT_CLICKED, nullptr);
             }
-            GetMooncake().update();
+            desktopPumpLifecycle();
             const auto reopenedClose = desktopCaptureUiSnapshot();
             if (reopenedClose.objectCount != beforeOpen.objectCount ||
                 reopenedClose.fullScreenChildCount != beforeOpen.fullScreenChildCount) {
@@ -1228,7 +1276,7 @@ static void desktopAssertAllRegisteredAppsUi()
             if (!registry.open(registeredApp.key)) {
                 std::abort();
             }
-            GetMooncake().update();
+            desktopPumpLifecycle();
             desktopClickCameraAction("Start");
             {
                 LvglLockGuard lock;
@@ -1238,7 +1286,7 @@ static void desktopAssertAllRegisteredAppsUi()
                 auto* back = desktopFindButton(desktopTopFullscreenRoot(), "Back");
                 lv_obj_send_event(back, LV_EVENT_CLICKED, nullptr);
             }
-            GetMooncake().update();
+            desktopPumpLifecycle();
             const auto closedBeforeFrame = desktopCaptureUiSnapshot();
             {
                 LvglLockGuard lock;
@@ -1274,29 +1322,34 @@ void app::Init(InitCallback_t callback)
         callback.onHalInjection();
     }
 
+    app_runtime::AsyncJobRunner::resumeAll();
+    // Installation and timer registration are atomic with respect to the display task.
+    // Thereafter all normal lifecycle transitions execute from this LVGL timer.
+    LvglLockGuard lock;
     GetMooncake();
-
     on_install_apps();
+    _lifecycleTimer = lv_timer_create(updateLifecycle, 16, nullptr);
+    lv_timer_ready(_lifecycleTimer);
+    lv_display_add_event_cb(lv_display_get_default(), displayEvent, LV_EVENT_ALL, nullptr);
+    for (auto* input = lv_indev_get_next(nullptr); input; input = lv_indev_get_next(input)) {
+        lv_indev_add_event_cb(input, [](lv_event_t*) {
+            app_runtime::globalPerformanceTelemetry().recordInput(app_runtime::monotonicMicros());
+        }, LV_EVENT_PRESSED, nullptr);
+    }
 }
 
 void app::Update()
 {
-    const uint32_t nowMs = GetHAL()->millis();
-    auto& telemetry = app_runtime::globalPerformanceTelemetry();
-    if (_appUpdateScheduler.shouldRun(nowMs)) {
-        const uint32_t appStartMs = GetHAL()->millis();
-        GetMooncake().update();
-        const uint32_t appEndMs = GetHAL()->millis();
-        telemetry.recordAppUpdate(appStartMs, appEndMs);
+#if defined(PLATFORM_BUILD_DESKTOP)
+    // SDL and lifecycle callbacks share the main thread on every desktop platform.
+    uint32_t next;
+    {
+        LvglLockGuard lock;
+        const auto started = GetHAL()->millis();
+        next = lv_timer_handler();
+        app_runtime::globalPerformanceTelemetry().recordLvglHandler(started, GetHAL()->millis());
     }
-    telemetry.recordBackgroundJob(app_runtime::globalAsyncJobRunner().busy(), app_runtime::globalAsyncJobRunner().currentJob());
-
-#if defined(__APPLE__) && defined(__MACH__)
-    // 'nextEventMatchingMask should only be called from the Main Thread!'
-    const uint32_t lvglStartMs = GetHAL()->millis();
-    auto time_till_next = lv_timer_handler();
-    telemetry.recordLvglHandler(lvglStartMs, GetHAL()->millis());
-    std::this_thread::sleep_for(std::chrono::milliseconds(time_till_next));
+    GetHAL()->delay(std::min<uint32_t>(next, 16));
 #endif
 
 #if defined(PLATFORM_BUILD_DESKTOP)
@@ -1319,8 +1372,17 @@ bool app::IsDone()
 
 void app::Destroy()
 {
-    DestroyMooncake();
+    {
+        LvglLockGuard lock;
+        if (_lifecycleTimer) lv_timer_delete(_lifecycleTimer);
+        _lifecycleTimer = nullptr;
+        DestroyMooncake();
+    }
     app_pps::PpsController::shutdown();
     app_settings_power::PowerSettingsController::shutdown();
+    if (!app_runtime::AsyncJobRunner::shutdownAll(30000)) {
+        mclog::tagError(_tag, "Shutdown timed out: refusing to destroy HAL while jobs still use it");
+        std::abort();
+    }
     hal::Destroy();
 }

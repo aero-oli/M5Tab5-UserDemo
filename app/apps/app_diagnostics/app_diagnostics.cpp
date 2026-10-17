@@ -73,13 +73,13 @@ private:
         lv_obj_set_width(description, layout.description.w);
         _loop = makeMetric(layout, 0, "App Loop");
         _slow = makeMetric(layout, 1, "Slow Updates");
-        _lvgl = makeMetric(layout, 2, "LVGL");
+        _lvgl = makeMetric(layout, 2, "Render");
         _task = makeMetric(layout, 3, "Background Task");
         auto* panel = app_ui::makePanel(content(), layout.detailPanel.x, layout.detailPanel.y, layout.detailPanel.w,
                                         layout.detailPanel.h);
         auto* hint = app_ui::makeLabel(
             panel,
-            "Use this screen when the UI feels sluggish. Slow updates count app-loop samples over 50 ms; the average is a rolling window.",
+            "Input timing ends at the flush callback, not physical panel presentation. Lock counters cover HAL callers. Heap and stack are device-only.",
             layout.detailHint.x, layout.detailHint.y, &lv_font_montserrat_18,
             app_ui::theme::color(app_ui::theme::muted));
         lv_obj_set_width(hint, layout.detailHint.w);
@@ -103,14 +103,24 @@ private:
         setMetric(_loop, "App Loop", "%ums avg %ums", static_cast<unsigned>(perf.lastAppUpdateMs),
                   static_cast<unsigned>(perf.avgAppUpdateMs));
         setMetric(_slow, "Slow Updates", "%u", static_cast<unsigned>(perf.slowAppUpdates));
-        setMetric(_lvgl, "LVGL", "%ums max %ums", static_cast<unsigned>(perf.lastLvglMs),
-                  static_cast<unsigned>(perf.maxLvglMs));
+        setMetric(_lvgl, "Render", "%ums max %ums", static_cast<unsigned>(perf.lastRenderUs / 1000),
+                  static_cast<unsigned>(perf.maxRenderUs / 1000));
         setMetric(_task, "Background Task", "%s",
                   perf.backgroundBusy ? (perf.backgroundJob.empty() ? "Busy" : perf.backgroundJob.c_str()) : "Idle");
         if (_detail != nullptr) {
-            lv_label_set_text_fmt(_detail, "Updates: %u\nMax app loop: %ums\nCurrent task: %s",
-                                  static_cast<unsigned>(perf.totalAppUpdates), static_cast<unsigned>(perf.maxAppUpdateMs),
-                                  perf.backgroundBusy ? (perf.backgroundJob.empty() ? "busy" : perf.backgroundJob.c_str()) : "none");
+            lv_label_set_text_fmt(_detail,
+                "UI updates: %u   Max: %ums   Renders: %u\n"
+                "Input-to-flush samples: %u   p95: %ums   Max: %ums\n"
+                "HAL lock wait/hold max: %u / %u us\n"
+                "Device heap free/min: %u / %u bytes\n"
+                "Device UI stack headroom: %u bytes   Tasks: %u",
+                static_cast<unsigned>(perf.totalAppUpdates), static_cast<unsigned>(perf.maxAppUpdateMs),
+                static_cast<unsigned>(perf.renderedFrames), static_cast<unsigned>(perf.inputSamples),
+                static_cast<unsigned>(perf.p95InputToFlushUs / 1000),
+                static_cast<unsigned>(perf.maxInputToFlushUs / 1000),
+                static_cast<unsigned>(perf.maxLockWaitUs), static_cast<unsigned>(perf.maxLockHoldUs),
+                static_cast<unsigned>(perf.freeHeap), static_cast<unsigned>(perf.minimumHeap),
+                static_cast<unsigned>(perf.uiStackHeadroom), static_cast<unsigned>(perf.taskCount));
         }
     }
 

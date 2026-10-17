@@ -44,14 +44,17 @@ void HalEsp32::imu_init()
 
 void HalEsp32::updateImuData()
 {
+    std::lock_guard<std::mutex> lock(_imuIoMutex);
+    IMUData_t data;
     static struct bmi2_sens_data bmi_sensor_data;
     accel_gyro_bmi270_get_data(&bmi_sensor_data);
 
     /* 根据设置量程转换 */
-    imuData.accelX = bmi_sensor_data.acc.y / 835.92 / 10.0f;  // m/s^2
-    imuData.accelY = -bmi_sensor_data.acc.x / 835.92 / 10.0f;
-    imuData.accelZ = -bmi_sensor_data.acc.z / 835.92 / 10.0f;
-    imuData.gyroX  = bmi_sensor_data.gyr.y / 32.768 / 10.0f;  // °/s   gyro_raw*2*1000/2^16 --> 0.0305
-    imuData.gyroY  = bmi_sensor_data.gyr.x / 32.768 / 10.0f;
-    imuData.gyroZ  = -bmi_sensor_data.gyr.z / 32.768 / 10.0f;
+    data.accelX = bmi_sensor_data.acc.y / 835.92 / 10.0f;  // m/s^2
+    data.accelY = -bmi_sensor_data.acc.x / 835.92 / 10.0f;
+    data.accelZ = -bmi_sensor_data.acc.z / 835.92 / 10.0f;
+    data.gyroX  = bmi_sensor_data.gyr.y / 32.768 / 10.0f;  // °/s   gyro_raw*2*1000/2^16 --> 0.0305
+    data.gyroY  = bmi_sensor_data.gyr.x / 32.768 / 10.0f;
+    data.gyroZ  = -bmi_sensor_data.gyr.z / 32.768 / 10.0f;
+    publishImuData(data);
 }

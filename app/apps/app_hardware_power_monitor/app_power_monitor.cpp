@@ -112,8 +112,8 @@ private:
         setMetric(_cpu, "CPU Temp", PowerMonitorController::formatCpuTemp(sample).c_str());
         if (_detail != nullptr) {
             char detail[96];
-            std::snprintf(detail, sizeof(detail), "Shunt: %.3f V\nSampling: 4 Hz while this app is open", sample.shuntVoltage);
-            lv_label_set_text(_detail, detail);
+            std::snprintf(detail, sizeof(detail), "Shunt: %.3f V\nSampling: up to 4 Hz while this app is open", sample.shuntVoltage);
+            lv_label_set_text(_detail, sample.hasSample ? detail : "Waiting for first power sample...");
         }
     }
 

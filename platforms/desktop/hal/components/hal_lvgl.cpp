@@ -6,6 +6,7 @@
 #include "../hal_desktop.h"
 #include "../hal_config.h"
 #include "hal/hal.h"
+#include <apps/runtime/performance_telemetry.h>
 #include <mooncake_log.h>
 #include <lvgl.h>
 #include <mutex>
@@ -46,27 +47,28 @@ void HalDesktop::lvgl_init()
     lv_indev_set_display(keyboard, display);
     lv_indev_set_group(keyboard, lv_group_get_default());
 
-#if not defined(__APPLE__) && not defined(__MACH__)
-    std::thread([]() {
-        while (!hal::Check()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(20));
-        }
-        while (true) {
-            GetHAL()->lvglLock();
-            auto time_till_next = lv_timer_handler();
-            GetHAL()->lvglUnlock();
-            std::this_thread::sleep_for(std::chrono::milliseconds(time_till_next));
-        }
-    }).detach();
-#endif
+
 }
 
+namespace {
+thread_local unsigned displayLockDepth = 0;
+thread_local uint64_t displayLockStartUs = 0;
+thread_local uint64_t displayLockWaitUs = 0;
+}
 void HalDesktop::lvglLock()
 {
+    const auto started = app_runtime::monotonicMicros();
     _lvgl_mutex.lock();
+    if (displayLockDepth++ == 0) {
+        displayLockStartUs = app_runtime::monotonicMicros();
+        displayLockWaitUs = displayLockStartUs - started;
+    }
 }
 
 void HalDesktop::lvglUnlock()
 {
+    const bool outer = --displayLockDepth == 0;
+    const auto held = app_runtime::monotonicMicros() - displayLockStartUs;
     _lvgl_mutex.unlock();
+    if (outer) app_runtime::globalPerformanceTelemetry().recordLock(displayLockWaitUs, held);
 }

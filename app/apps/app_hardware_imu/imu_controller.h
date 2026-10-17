@@ -8,10 +8,14 @@
 #include <functional>
 #include <string>
 #include <hal/hal.h>
+#include <apps/runtime/async_sample.h>
 
 namespace app_hardware_imu {
 
-using ImuSample = hal::HalBase::IMUData_t;
+struct ImuSample : hal::HalBase::IMUData_t {
+    bool hasSample = false;
+    bool pending = false;
+};
 
 class ImuController {
 public:
@@ -21,6 +25,7 @@ public:
     ImuController(UpdateFn updateFn, DataFn dataFn);
 
     ImuSample sample() const;
+    ImuSample cached() const;
 
     static std::string formatAccel(float value);
     static std::string formatGyro(float value);
@@ -28,6 +33,7 @@ public:
 private:
     UpdateFn _updateFn;
     DataFn _dataFn;
+    app_runtime::AsyncSample<ImuSample> _samples;
 };
 
 }  // namespace app_hardware_imu

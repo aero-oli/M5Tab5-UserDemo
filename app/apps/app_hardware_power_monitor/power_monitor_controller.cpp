@@ -28,38 +28,59 @@ PowerMonitorController::PowerMonitorController(UpdateFn updateFn, DataFn dataFn,
 
 PowerSample PowerMonitorController::sample()
 {
-    _updateFn();
-    const auto data = _dataFn();
-    _cached.busVoltage = data.busVoltage;
-    _cached.current = data.shuntCurrent;
-    _cached.shuntVoltage = data.shuntVoltage;
-    _cached.outputPower = std::fabs(data.busPower) > 0.001f ? data.busPower : data.busVoltage * std::fabs(data.shuntCurrent);
-    _cached.cpuTempC = _cpuTempFn();
-    return _cached;
+    const auto update = _updateFn;
+    const auto dataFn = _dataFn;
+    const auto cpuTemp = _cpuTempFn;
+    if (!update || !dataFn || !cpuTemp) {
+        return cached();
+    }
+    return _samples.request("power monitor sample", [update, dataFn, cpuTemp] {
+        update();
+        const auto data = dataFn();
+        PowerSample value;
+        value.busVoltage = data.busVoltage;
+        value.current = data.shuntCurrent;
+        value.shuntVoltage = data.shuntVoltage;
+        value.outputPower = std::fabs(data.busPower) > 0.001f ? data.busPower : data.busVoltage * std::fabs(data.shuntCurrent);
+        value.cpuTempC = cpuTemp();
+        return value;
+    });
 }
 
 PowerSample PowerMonitorController::cached() const
 {
-    return _cached;
+    return _samples.cached();
 }
 
 std::string PowerMonitorController::formatVoltage(const PowerSample& sample)
 {
+    if (!sample.hasSample) {
+        return "--";
+    }
     return format("%.2f V", sample.busVoltage);
 }
 
 std::string PowerMonitorController::formatCurrent(const PowerSample& sample)
 {
+    if (!sample.hasSample) {
+        return "--";
+    }
     return format("%.3f A", sample.current);
 }
 
 std::string PowerMonitorController::formatPower(const PowerSample& sample)
 {
+    if (!sample.hasSample) {
+        return "--";
+    }
     return format("%.2f W", sample.outputPower);
 }
 
 std::string PowerMonitorController::formatCpuTemp(const PowerSample& sample)
 {
+    if (!sample.hasSample) {
+        return "--";
+    }
     char buffer[24];
     std::snprintf(buffer, sizeof(buffer), "%d C", sample.cpuTempC);
     return buffer;

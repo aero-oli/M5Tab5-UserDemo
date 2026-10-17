@@ -177,13 +177,16 @@ bool HalDesktop::wakeDisplay()
 /* -------------------------------------------------------------------------- */
 void HalDesktop::updateImuData()
 {
+    std::lock_guard<std::mutex> lock(_imuIoMutex);
+    IMUData_t data;
     static std::random_device rd;
     static std::mt19937 gen(rd());
     static std::uniform_real_distribution<> dis(-0.1, 0.1);
 
-    imuData.accelX = dis(gen);
-    imuData.accelY = dis(gen);
-    imuData.accelZ = dis(gen);
+    data.accelX = dis(gen);
+    data.accelY = dis(gen);
+    data.accelZ = dis(gen);
+    publishImuData(data);
 }
 
 /* -------------------------------------------------------------------------- */

@@ -14,13 +14,22 @@ ImuController::ImuController(UpdateFn updateFn, DataFn dataFn) : _updateFn(std::
 
 ImuSample ImuController::sample() const
 {
-    if (_updateFn) {
-        _updateFn();
+    const auto update = _updateFn;
+    const auto dataFn = _dataFn;
+    if (!update || !dataFn) {
+        return cached();
     }
-    if (_dataFn) {
-        return _dataFn();
-    }
-    return {};
+    return _samples.request("IMU sample", [update, dataFn] {
+        update();
+        ImuSample value;
+        static_cast<hal::HalBase::IMUData_t&>(value) = dataFn();
+        return value;
+    });
+}
+
+ImuSample ImuController::cached() const
+{
+    return _samples.cached();
 }
 
 std::string ImuController::formatAccel(float value)
