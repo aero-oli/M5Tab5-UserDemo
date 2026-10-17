@@ -1,6 +1,5 @@
 build
 .cache
-.vscode
 build.clang
 managed_components
 

@@ -14,7 +14,8 @@
 // https://github.com/lvgl/lv_port_pc_vscode/blob/master/main/src/main.c
 
 static const std::string _tag = "lvgl";
-static std::mutex _lvgl_mutex;
+// Match the recursive display lock used by the Tab5 LVGL port.
+static std::recursive_mutex _lvgl_mutex;
 
 void HalDesktop::lvgl_init()
 {

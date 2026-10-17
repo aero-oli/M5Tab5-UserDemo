@@ -4,11 +4,17 @@
  * SPDX-License-Identifier: MIT
  */
 #include "hal/hal_esp32.h"
+#include <hal/profiles/tab5_gpio.h>
+#include <array>
+#include <mutex>
 extern "C" {
 #include "utils/rx8130/rx8130.h"
 }
 #include <mooncake_log.h>
+#include <cstring>
+#include <functional>
 #include <esp_timer.h>
+#include <driver/i2c_master.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <bsp/m5stack_tab5.h>
@@ -17,6 +23,37 @@ extern "C" {
 extern esp_lcd_touch_handle_t _lcd_touch_handle;
 
 static const std::string _tag = "hal";
+
+static i2c_master_bus_handle_t get_module_i2c_bus(hal::ModuleBus bus)
+{
+    if (bus == hal::ModuleBus::PortA) {
+        return bsp_ext_i2c_get_handle();
+    }
+    return bsp_i2c_get_handle();
+}
+
+static bool with_i2c_device(hal::ModuleBus bus, uint8_t address, const std::function<esp_err_t(i2c_master_dev_handle_t)>& op)
+{
+    i2c_master_bus_handle_t bus_handle = get_module_i2c_bus(bus);
+    if (bus_handle == nullptr) {
+        return false;
+    }
+
+    i2c_device_config_t dev_cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address  = address,
+        .scl_speed_hz    = 400000,
+    };
+
+    i2c_master_dev_handle_t dev_handle = nullptr;
+    if (i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle) != ESP_OK) {
+        return false;
+    }
+
+    esp_err_t ret = op(dev_handle);
+    i2c_master_bus_rm_device(dev_handle);
+    return ret == ESP_OK;
+}
 
 static void lvgl_read_cb(lv_indev_t* indev, lv_indev_data_t* data)
 {
@@ -355,6 +392,37 @@ std::vector<uint8_t> HalEsp32::i2cScan(bool isInternal)
     return addrs;
 }
 
+bool HalEsp32::i2cProbe(hal::ModuleBus bus, uint8_t address)
+{
+    i2c_master_bus_handle_t bus_handle = get_module_i2c_bus(bus);
+    if (bus_handle == nullptr) {
+        return false;
+    }
+    return i2c_master_probe(bus_handle, address, 50) == ESP_OK;
+}
+
+bool HalEsp32::i2cReadRegister(hal::ModuleBus bus, uint8_t address, uint8_t reg, uint8_t* buffer, size_t length)
+{
+    return with_i2c_device(bus, address, [&](i2c_master_dev_handle_t dev_handle) {
+        return i2c_master_transmit_receive(dev_handle, &reg, 1, buffer, length, 100);
+    });
+}
+
+bool HalEsp32::i2cWriteRegister(hal::ModuleBus bus, uint8_t address, uint8_t reg, const uint8_t* data, size_t length)
+{
+    uint8_t write_buffer[17] = {};
+    if (length + 1 > sizeof(write_buffer)) {
+        return false;
+    }
+
+    write_buffer[0] = reg;
+    memcpy(&write_buffer[1], data, length);
+
+    return with_i2c_device(bus, address, [&](i2c_master_dev_handle_t dev_handle) {
+        return i2c_master_transmit(dev_handle, write_buffer, length + 1, 100);
+    });
+}
+
 void HalEsp32::initPortAI2c()
 {
     mclog::tagInfo(_tag, "init port a i2c");
@@ -367,18 +435,87 @@ void HalEsp32::deinitPortAI2c()
     bsp_ext_i2c_deinit();
 }
 
-void HalEsp32::gpioInitOutput(uint8_t pin)
-{
-    gpio_set_pull_mode((gpio_num_t)pin, GPIO_PULLUP_ONLY);
-    gpio_set_direction((gpio_num_t)pin, GPIO_MODE_OUTPUT);
+namespace {
+std::mutex s_gpioMutex;
+std::array<hal::GpioOutputState, 55> s_gpioOutputs;
 }
 
-void HalEsp32::gpioSetLevel(uint8_t pin, bool level)
+std::vector<hal::GpioPinInfo> HalEsp32::gpioGetPins()
 {
-    gpio_set_level((gpio_num_t)pin, level);
+    auto pins = hal::tab5ExpansionPins();
+#if CONFIG_ESP_CONSOLE_UART_DEFAULT || CONFIG_ESP_CONSOLE_UART_CUSTOM
+    for (auto& pin : pins) {
+#if CONFIG_ESP_CONSOLE_UART_DEFAULT
+        const bool consolePin = pin.pin == 37 || pin.pin == 38;
+#else
+        const bool consolePin = pin.pin == CONFIG_ESP_CONSOLE_UART_TX_GPIO || pin.pin == CONFIG_ESP_CONSOLE_UART_RX_GPIO;
+#endif
+        if (consolePin) {
+            pin.outputAllowed = false;
+            pin.reservation = "Serial console";
+        }
+    }
+#endif
+    return pins;
 }
 
-void HalEsp32::gpioReset(uint8_t pin)
+hal::GpioClaimResult HalEsp32::gpioInitOutput(uint8_t pin)
 {
-    gpio_set_level((gpio_num_t)pin, false);
+    std::lock_guard<std::mutex> lock(s_gpioMutex);
+    if (pin >= s_gpioOutputs.size() || !hal::gpioOutputAllowed(gpioGetPins(), pin) || s_gpioOutputs[pin].claimed) {
+        return hal::GpioClaimResult::Rejected;
+    }
+    auto& state = s_gpioOutputs[pin];
+    state.claimed = true;
+    // Set the output latch before enabling drive to avoid briefly driving a previous high level.
+    gpio_config_t config = {};
+    config.pin_bit_mask = 1ULL << pin;
+    config.mode = GPIO_MODE_OUTPUT;
+    config.pull_up_en = GPIO_PULLUP_DISABLE;
+    config.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    config.intr_type = GPIO_INTR_DISABLE;
+    state.levelKnown = gpio_set_level(static_cast<gpio_num_t>(pin), 0) == ESP_OK && gpio_config(&config) == ESP_OK;
+    state.high = false;
+    return state.levelKnown ? hal::GpioClaimResult::Claimed : hal::GpioClaimResult::Unknown;
+}
+
+bool HalEsp32::gpioSetLevel(uint8_t pin, bool level)
+{
+    std::lock_guard<std::mutex> lock(s_gpioMutex);
+    if (pin >= s_gpioOutputs.size() || !hal::gpioOutputAllowed(gpioGetPins(), pin) ||
+        !s_gpioOutputs[pin].claimed || !s_gpioOutputs[pin].levelKnown) {
+        return false;
+    }
+    auto& state = s_gpioOutputs[pin];
+    state.levelKnown = gpio_set_level(static_cast<gpio_num_t>(pin), level) == ESP_OK;
+    if (state.levelKnown) {
+        state.high = level;
+    }
+    return state.levelKnown;
+}
+
+bool HalEsp32::gpioReset(uint8_t pin)
+{
+    std::lock_guard<std::mutex> lock(s_gpioMutex);
+    if (pin >= s_gpioOutputs.size() || !hal::gpioOutputAllowed(gpioGetPins(), pin) || !s_gpioOutputs[pin].claimed) {
+        return false;
+    }
+    gpio_config_t config = {};
+    config.pin_bit_mask = 1ULL << pin;
+    config.mode = GPIO_MODE_INPUT;
+    config.pull_up_en = GPIO_PULLUP_DISABLE;
+    config.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    config.intr_type = GPIO_INTR_DISABLE;
+    if (gpio_config(&config) != ESP_OK) {
+        s_gpioOutputs[pin].levelKnown = false;
+        return false;
+    }
+    s_gpioOutputs[pin] = {};
+    return true;
+}
+
+hal::GpioOutputState HalEsp32::gpioGetOutputState(uint8_t pin)
+{
+    std::lock_guard<std::mutex> lock(s_gpioMutex);
+    return pin < s_gpioOutputs.size() ? s_gpioOutputs[pin] : hal::GpioOutputState{};
 }

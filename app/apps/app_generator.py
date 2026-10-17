@@ -1,176 +1,177 @@
-import os as os
-from shutil import copytree
+#!/usr/bin/env python3
+import argparse
 import re
-import sys
-from re import sub
 from datetime import datetime
-
-script_directory = os.path.dirname(os.path.abspath(sys.argv[0])) + "/"
-
-
-def toSnakeCase(sentence):
-    # 用空格替换连字符，然后应用正则表达式替换以实现标题大小写转换，
-    # 并在单词之间添加下划线，最后将结果转换为小写
-    return '_'.join(
-        sub('([A-Z][a-z]+)', r' \1',
-            sub('([A-Z]+)', r' \1',
-                sentence.replace('-', ' '))).split()).lower()
+from pathlib import Path
 
 
-def toCamelCase(sentence):
-    # 使用正则表达式替换下划线和连字符为空格，
-    # 然后将字符串转换为标题格式（每个单词的第一个字母大写），并移除空格
-    sentence = sub(r"(_|-)+", " ", sentence).title().replace(" ", "")
-
-    # 确保第一个字母是小写
-    return ''.join([sentence[0].lower(), sentence[1:]])
+SCRIPT_DIRECTORY = Path(__file__).resolve().parent
 
 
-def toCamelCase(sentence):
-    words = sentence.replace('_', ' ').split()
-    camel_case = ''.join(word.capitalize() for word in words)
-    return camel_case
+def to_snake_case(value: str) -> str:
+    words = re.sub(r"[^A-Za-z0-9]+", " ", value).strip().split()
+    return "_".join(word.lower() for word in words)
 
 
-def checkInputValid(input):
-    # 检查字符是否有效
-    if input == "":
-        return False
-    if not re.match("^[a-zA-Z_\s]+$", input):
-        return False
-    if input == "template":
-        return False
-
-    # 检查格式是否有效
-    if len(input.replace(' ', '').replace('_', '')) == 0:
-        return False
-
-    return True
+def to_pascal_case(value: str) -> str:
+    return "".join(word.capitalize() for word in to_snake_case(value).split("_"))
 
 
-class PrintColor:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
+def check_input_valid(value: str) -> bool:
+    snake = to_snake_case(value)
+    return bool(snake) and snake != "template"
 
 
-def getAppName():
-    # 读取输入
-    while True:
-        user_input = input("input new app's name: ")
-        if checkInputValid(user_input):
-            break
-        else:
-            print("bad name, try again")
+def header_template(namespace: str, factory_name: str) -> str:
+    return f"""/*
+ * SPDX-FileCopyrightText: {datetime.now().year} M5Stack Technology CO LTD
+ *
+ * SPDX-License-Identifier: MIT
+ */
+#pragma once
 
-    print("get input: {}\n".format(user_input))
+#include <memory>
+#include <mooncake.h>
 
-    app_name = "App" + toCamelCase(user_input)
-    print("> new app's name: " + PrintColor.OKGREEN + app_name + PrintColor.ENDC)
-    return app_name
+namespace {namespace} {{
 
+std::unique_ptr<mooncake::AppAbility> {factory_name}();
 
-class AppFilePaths:
-    def __init__(self, folder, source_file, header_file):
-        self.folder = folder
-        self.source_file = source_file
-        self.header_file = header_file
+}}  // namespace {namespace}
+"""
 
 
-def getAppFilePaths(appName):
-    file_paths = AppFilePaths("", "", "")
+def source_template(class_name: str, namespace: str, header_name: str, title: str, factory_name: str) -> str:
+    return f"""/*
+ * SPDX-FileCopyrightText: {datetime.now().year} M5Stack Technology CO LTD
+ *
+ * SPDX-License-Identifier: MIT
+ */
+#include "{header_name}"
 
-    # 获取文件路径
-    file_paths.folder = script_directory + toSnakeCase(appName)
+#include <memory>
+#include <hal/hal.h>
+#include <lvgl.h>
+#include <mooncake.h>
+#include <smooth_lvgl.h>
+#include <apps/ui/app_shell.h>
+#include <apps/ui/ui_components.h>
+#include <apps/ui/ui_theme.h>
 
-    file_paths.source_file = os.path.join(
-        file_paths.folder, toSnakeCase(appName) + ".cpp")
+using namespace {namespace};
 
-    file_paths.header_file = os.path.join(
-        file_paths.folder, toSnakeCase(appName) + ".h")
+namespace {{
 
-    print("> new app's file paths:\n - {}\n - {}\n - {}\n".format(
-        PrintColor.OKGREEN + file_paths.folder,
-        PrintColor.OKGREEN + file_paths.source_file,
-        PrintColor.OKGREEN + file_paths.header_file)
-        + PrintColor.ENDC)
-    return file_paths
+class {class_name} : public mooncake::AppAbility {{
+public:
+    {class_name}()
+    {{
+        setAppInfo().name = "{title}";
+    }}
 
+    void onOpen() override
+    {{
+        _shell = std::make_unique<app_ui::AppShell>("{title}", [&]() {{ close(); }});
+        _shell->init();
+        build();
+    }}
 
-def createAppFiles(appName, appFilePaths):
-    # 创建文件夹
-    os.mkdir(appFilePaths.folder)
+    void onClose() override
+    {{
+        _shell.reset();
+    }}
 
-    # 创建文件
-    source_file = open(appFilePaths.source_file, mode='x')
-    header_file = open(appFilePaths.header_file, mode='x')
+private:
+    std::unique_ptr<app_ui::AppShell> _shell;
 
-    # 获取模板内容
-    content_source_file = open(
-        script_directory + "app_template/app_template.cpp", mode='r').read()
-    content_header_file = open(
-        script_directory + "app_template/app_template.h", mode='r').read()
+    lv_obj_t* content() const
+    {{
+        return _shell->content();
+    }}
 
-    # 替换类名
-    content_source_file = content_source_file.replace(
-        "AppTemplate", appName)
-    content_header_file = content_header_file.replace(
-        "AppTemplate", appName)
+    void build()
+    {{
+        LvglLockGuard lock;
+        auto* title = app_ui::makeLabel(content(), "{title}", 0, 0, &lv_font_montserrat_24,
+                                        app_ui::theme::color(app_ui::theme::text));
+        lv_obj_set_width(title, 640);
+        lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
 
-    # 替换文件名
-    content_source_file = content_source_file.replace(
-        "app_template", toSnakeCase(appName))
-    content_header_file = content_header_file.replace(
-        "app_template", toSnakeCase(appName))
+        auto* detail = app_ui::makeLabel(content(), "Add controls, controller state, and layout helpers here.", 0, 56,
+                                         &lv_font_montserrat_18, app_ui::theme::color(app_ui::theme::muted));
+        lv_obj_set_width(detail, 900);
+        lv_label_set_long_mode(detail, LV_LABEL_LONG_WRAP);
+    }}
+}};
 
-    # 替换日期
-    content_source_file = content_source_file.replace(
-        "<date></date>", datetime.now().strftime("%Y-%m-%d"))
-    content_header_file = content_header_file.replace(
-        "<date></date>", datetime.now().strftime("%Y-%m-%d"))
+}}  // namespace
 
-    # 写入内容
-    source_file.write(content_source_file)
-    header_file.write(content_header_file)
-
-    # 关闭文件
-    source_file.close()
-    header_file.close()
-
-
-def installApp(appName):
-    print("> install app {} into mooncake".format(appName))
-
-    # 读取应用安装回调
-    app_install_cb_file = open(script_directory + "app_installer.h", mode='r')
-    content_app_install_cb_file = app_install_cb_file.read()
-    app_install_cb_file.close()
-
-    # 添加头文件包含
-    header_include_tag = "/* Header files locator (Don't remove) */"
-    content_app_install_cb_file = content_app_install_cb_file.replace(
-        header_include_tag, "#include \"{}/{}.h\"\n{}".format(toSnakeCase(appName), toSnakeCase(appName), header_include_tag))
-
-    # 添加应用安装语句
-    app_install_tag = "/* Install app locator (Don't remove) */"
-    content_app_install_cb_file = content_app_install_cb_file.replace(
-        app_install_tag, "mooncake::GetMooncake().installApp(std::make_unique<{}>());\n    {}".format(appName, app_install_tag))
-
-    # 写入应用安装回调
-    app_install_cb_file = open(script_directory + "app_installer.h", mode='w+')
-    app_install_cb_file.write(content_app_install_cb_file)
-    app_install_cb_file.close()
+std::unique_ptr<mooncake::AppAbility> {namespace}::{factory_name}()
+{{
+    return std::make_unique<{class_name}>();
+}}
+"""
 
 
-if __name__ == "__main__": 
-    print("app generator")
+def catalog_snippet(app_key: str, namespace: str, header_path: str, factory_name: str, title: str, icon: str) -> str:
+    return f"""Add the app key in app/apps/app_registry.h:
+    {app_key},
 
-    name = getAppName()  # 获取应用名称
-    file_paths = getAppFilePaths(name)  # 获取文件路径
-    createAppFiles(name, file_paths)  # 创建应用文件
-    installApp(name)  # 安装应用
+Add the include in app/apps/app_catalog.cpp:
+    #include "{header_path}"
 
-    print("\ndone")  # 完成
+Add the catalog entry in app_catalog::registerDefaultApps():
+    apps.add({{AppKey::{app_key},
+              AppCategory::Settings,
+              "{title}",
+              "Describe this app",
+              "",
+              "{icon}",
+              100,
+              0,
+              false,
+              false,
+              [] {{ return {namespace}::{factory_name}(); }},
+              StatusProvider{{}}}});
+"""
+
+
+def create_app_files(raw_name: str) -> None:
+    if not check_input_valid(raw_name):
+        raise ValueError("Use a non-empty app name containing letters, numbers, spaces, underscores, or dashes.")
+
+    feature = to_snake_case(raw_name)
+    pascal = to_pascal_case(raw_name)
+    class_name = f"App{pascal}"
+    namespace = f"app_{feature}"
+    folder_name = f"app_{feature}"
+    folder = SCRIPT_DIRECTORY / folder_name
+    header_name = f"{folder_name}.h"
+    source_name = f"{folder_name}.cpp"
+    header_path = folder / header_name
+    source_path = folder / source_name
+    factory_name = f"make{pascal}App"
+    title = raw_name.strip().replace("_", " ").replace("-", " ").title()
+    icon = "".join(part[0].upper() for part in title.split()[:2]) or "AP"
+
+    folder.mkdir(exist_ok=False)
+    header_path.write_text(header_template(namespace, factory_name), encoding="utf-8")
+    source_path.write_text(source_template(class_name, namespace, header_name, title, factory_name), encoding="utf-8")
+
+    print(f"Created {header_path}")
+    print(f"Created {source_path}")
+    print()
+    print(catalog_snippet(pascal, namespace, f"{folder_name}/{header_name}", factory_name, title, icon[:2]))
+    print("Re-run CMake after adding the catalog entry so new source files are picked up.")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Create a modular Mooncake app shell.")
+    parser.add_argument("name", nargs="?", help="New app name, for example 'Fan Control'")
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    name = args.name or input("input new app's name: ")
+    create_app_files(name)

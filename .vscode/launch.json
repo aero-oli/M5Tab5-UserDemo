@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug desktop demo",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/desktop/app_desktop_build",
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "Desktop: build",
+      "args": []
+    }
+  ]
+}

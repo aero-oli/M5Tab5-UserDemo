@@ -1,0 +1,36 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "desktop",
+      "displayName": "Desktop",
+      "description": "Configure the SDL desktop build with compile_commands.json for clangd.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/vscode-desktop",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "desktop",
+      "configurePreset": "desktop"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "desktop",
+      "configurePreset": "desktop",
+      "filter": {
+        "include": {
+          "name": ".*_tests$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

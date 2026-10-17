@@ -1,27 +1,20 @@
-/**
- * @file app_template.h
- * @author Forairaaaaa
- * @brief
- * @version 0.1
- * @date <date></date>
+/*
+ * SPDX-FileCopyrightText: 2025 M5Stack Technology CO LTD
  *
- * @copyright Copyright (c) 2024
- *
+ * SPDX-License-Identifier: MIT
  */
 #pragma once
+#include <memory>
 #include <mooncake.h>
+#include <apps/ui/app_shell.h>
 
-/**
- * @brief 派生 App
- *
- */
 class AppTemplate : public mooncake::AppAbility {
 public:
     AppTemplate();
 
-    // 重写生命周期回调
-    void onCreate() override;
     void onOpen() override;
-    void onRunning() override;
     void onClose() override;
+
+private:
+    std::unique_ptr<app_ui::AppShell> _shell;
 };

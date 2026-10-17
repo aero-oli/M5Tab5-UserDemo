@@ -117,7 +117,7 @@ void accel_gyro_bmi270_wrist_wear_irq(void)
         if (bmi270_map_feat_int(&sens_int, 1, &bmi270) != BMI2_OK) {
             ESP_LOGE(TAG, "Wrist gesture mapping failed\n");
         }
-        struct bmi2_int_pin_config int_pin_cfg;
+        struct bmi2_int_pin_config int_pin_cfg = {0};
         int_pin_cfg.pin_type             = BMI2_INT1;
         int_pin_cfg.int_latch            = BMI2_INT_LATCH;
         int_pin_cfg.pin_cfg[0].lvl       = BMI2_INT_ACTIVE_HIGH;  // Active high
@@ -150,7 +150,7 @@ void accel_gyro_bmi270_wrist_wear_irq_without_int(void)
         if (bmi270_map_feat_int(&sens_int, 1, &bmi270) != BMI2_OK) {
             ESP_LOGE(TAG, "Wrist gesture mapping failed\n");
         }
-        struct bmi2_int_pin_config int_pin_cfg;
+        struct bmi2_int_pin_config int_pin_cfg = {0};
         int_pin_cfg.pin_type             = BMI2_INT_BOTH;
         int_pin_cfg.int_latch            = BMI2_INT_LATCH;
         int_pin_cfg.pin_cfg[0].lvl       = BMI2_INT_ACTIVE_LOW;  // Active low
@@ -284,7 +284,7 @@ void accel_gyro_bmi270_clear_irq_int(void)
         return;
     }
 
-    struct bmi2_int_pin_config int_pin_cfg;
+    struct bmi2_int_pin_config int_pin_cfg = {0};
     int_pin_cfg.pin_type             = BMI2_INT_BOTH;
     int_pin_cfg.int_latch            = BMI2_INT_LATCH;
     int_pin_cfg.pin_cfg[0].lvl       = BMI2_INT_ACTIVE_LOW;  // Active low
@@ -295,6 +295,23 @@ void accel_gyro_bmi270_clear_irq_int(void)
     if (bmi2_set_int_pin_config(&int_pin_cfg, &bmi270) != BMI2_OK) {
         ESP_LOGE(TAG, "Wrist gesture pin int disable config failed");
     }
+}
+
+bool accel_gyro_bmi270_disable_wake_irq(void)
+{
+    if (i2c_dev_handle_bmi270 == NULL) return false;
+    struct bmi2_int_pin_config config = {0};
+    if (bmi2_get_int_pin_config(&config, &bmi270) != BMI2_OK) return false;
+    config.pin_type = BMI2_INT_BOTH;
+    for (int pin = 0; pin < 2; ++pin) {
+        config.pin_cfg[pin].output_en = BMI2_INT_OUTPUT_DISABLE;
+        config.pin_cfg[pin].input_en = BMI2_INT_INPUT_DISABLE;
+    }
+    if (bmi2_set_int_pin_config(&config, &bmi270) != BMI2_OK) return false;
+    struct bmi2_int_pin_config actual = {0};
+    if (bmi2_get_int_pin_config(&actual, &bmi270) != BMI2_OK) return false;
+    return actual.pin_cfg[0].output_en == BMI2_INT_OUTPUT_DISABLE &&
+           actual.pin_cfg[1].output_en == BMI2_INT_OUTPUT_DISABLE;
 }
 
 static int8_t bmi270_i2c_read(uint8_t reg_addr, uint8_t *reg_data, uint32_t len, void *intf_ptr)

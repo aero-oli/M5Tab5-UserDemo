@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: MIT
  */
 #pragma once
+#include "gpio_diagnostics.h"
+#include "power_control.h"
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <queue>
@@ -17,6 +20,11 @@
  *
  */
 namespace hal {
+
+enum class ModuleBus {
+    MBus,
+    PortA,
+};
 
 /**
  * @brief
@@ -90,7 +98,11 @@ public:
         float shuntVoltage = 0.0f;
         float shuntCurrent = 0.0f;
     };
-    PMData_t powerMonitorData;
+    PMData_t getPowerMonitorData()
+    {
+        std::lock_guard<std::mutex> lock(_powerMonitorMutex);
+        return _powerMonitorData;
+    }
     virtual void updatePowerMonitorData()
     {
     }
@@ -122,18 +134,24 @@ public:
     {
         return false;
     }
-    virtual void powerOff()
+    // Bounded platform work; called only by the power controller's background worker.
+    virtual PowerResult performPowerAction(PowerAction action, uint16_t rtcMinutes)
     {
+        return {false, false, false, "Power control unavailable"};
     }
-    virtual void sleepAndTouchWakeup()
+    virtual bool isDisplayAsleep() { return false; }
+    virtual bool wakeDisplay() { return false; }
+
+protected:
+    std::mutex _powerMonitorMutex;
+    std::mutex _powerMonitorIoMutex;
+    PMData_t _powerMonitorData;
+    void publishPowerMonitorData(const PMData_t& data)
     {
+        std::lock_guard<std::mutex> lock(_powerMonitorMutex);
+        _powerMonitorData = data;
     }
-    virtual void sleepAndShakeWakeup()
-    {
-    }
-    virtual void sleepAndRtcWakeup()
-    {
-    }
+public:
 
     /* ----------------------------------- IMU ---------------------------------- */
     struct IMUData_t {
@@ -164,15 +182,37 @@ public:
     }
 
     /* --------------------------------- Camera --------------------------------- */
-    virtual void startCameraCapture(lv_obj_t* imgCanvas)
+    enum class CameraState {
+        Unavailable,
+        Stopped,
+        Starting,
+        Running,
+        Stopping,
+        Failed,
+    };
+    struct CameraStatus {
+        CameraState state = CameraState::Unavailable;
+        std::string lastError;
+        uint32_t frames = 0;
+        int width = 0;
+        int height = 0;
+        bool simulated = false;
+    };
+    virtual bool startCameraCapture(lv_obj_t* imgCanvas)
     {
+        return false;
     }
+    // Must detach the LVGL target before returning; hardware cleanup may finish asynchronously.
     virtual void stopCameraCapture()
     {
     }
+    virtual CameraStatus cameraGetStatus()
+    {
+        return {};
+    }
     virtual bool isCameraCapturing()
     {
-        return false;
+        return cameraGetStatus().state == CameraState::Running;
     }
 
     /* ---------------------------------- USB-A --------------------------------- */
@@ -257,6 +297,98 @@ public:
     virtual void startWifiAp()
     {
     }
+    enum class WifiMode {
+        Off,
+        Station,
+        AccessPoint,
+        StationAndAp,
+    };
+    enum class WifiConnectionState {
+        Idle,
+        Scanning,
+        Connecting,
+        Connected,
+        Failed,
+        ApRunning,
+    };
+    struct WifiNetwork {
+        std::string ssid;
+        int rssi = 0;
+        bool secure = true;
+        uint8_t channel = 0;
+    };
+    struct WifiStatus {
+        WifiMode mode = WifiMode::Off;
+        WifiConnectionState state = WifiConnectionState::Idle;
+        std::string ssid;
+        std::string ipAddress;
+        int rssi = 0;
+        bool extAntennaEnabled = false;
+        std::string lastError;
+    };
+    enum class OtaState {
+        Idle,
+        Checking,
+        Downloading,
+        Installing,
+        Complete,
+        Failed,
+    };
+    struct OtaStatus {
+        OtaState state = OtaState::Idle;
+        int progress = 0;
+        size_t bytesReceived = 0;
+        size_t totalBytes = 0;
+        std::string lastError;
+        bool rebootRequired = false;
+    };
+    virtual WifiStatus wifiGetStatus()
+    {
+        return {};
+    }
+    virtual std::vector<WifiNetwork> wifiScan()
+    {
+        return {};
+    }
+    virtual bool wifiConnect(const std::string& ssid, const std::string& password)
+    {
+        (void)ssid;
+        (void)password;
+        return false;
+    }
+    virtual void wifiDisconnect()
+    {
+    }
+    virtual void wifiForgetCredentials()
+    {
+    }
+    virtual void wifiSetExtAntennaEnabled(bool enable)
+    {
+        setExtAntennaEnable(enable);
+    }
+    virtual bool wifiStartAccessPoint()
+    {
+        startWifiAp();
+        return true;
+    }
+    virtual void wifiStopAccessPoint()
+    {
+    }
+    virtual OtaStatus otaGetStatus()
+    {
+        return {};
+    }
+    virtual bool otaStartFromUrl(const std::string& url)
+    {
+        (void)url;
+        return false;
+    }
+    virtual void otaCancel()
+    {
+    }
+    virtual void otaRebootToApply()
+    {
+    }
 
     /* --------------------------------- SD Card -------------------------------- */
     struct FileEntry_t {
@@ -289,6 +421,18 @@ public:
     {
         return {};
     }
+    virtual bool i2cProbe(ModuleBus bus, uint8_t address)
+    {
+        return false;
+    }
+    virtual bool i2cReadRegister(ModuleBus bus, uint8_t address, uint8_t reg, uint8_t* buffer, size_t length)
+    {
+        return false;
+    }
+    virtual bool i2cWriteRegister(ModuleBus bus, uint8_t address, uint8_t reg, const uint8_t* data, size_t length)
+    {
+        return false;
+    }
     virtual void initPortAI2c()
     {
     }
@@ -296,14 +440,25 @@ public:
     {
     }
 
-    virtual void gpioInitOutput(uint8_t pin)
+    virtual std::vector<GpioPinInfo> gpioGetPins()
     {
+        return {};
     }
-    virtual void gpioSetLevel(uint8_t pin, bool level)
+    virtual GpioClaimResult gpioInitOutput(uint8_t pin)
     {
+        return GpioClaimResult::Rejected;
     }
-    virtual void gpioReset(uint8_t pin)
+    virtual bool gpioSetLevel(uint8_t pin, bool level)
     {
+        return false;
+    }
+    virtual bool gpioReset(uint8_t pin)
+    {
+        return false;
+    }
+    virtual GpioOutputState gpioGetOutputState(uint8_t pin)
+    {
+        return {};
     }
 
     /* ------------------------------ UART monitor ------------------------------ */

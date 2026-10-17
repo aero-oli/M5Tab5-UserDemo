@@ -446,6 +446,7 @@ struct esp_video *esp_video_open(const char *name)
         return NULL;
     }
 
+    struct esp_video *opened_video = video;
     xSemaphoreTake(video->mutex, portMAX_DELAY);
 
     assert(video->reference <= UINT8_MAX);
@@ -460,6 +461,7 @@ struct esp_video *esp_video_open(const char *name)
         ret = video->ops->init(video);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "video->ops->init=%x", ret);
+            video->reference--;
             video = NULL;
         } else {
             int stream_count = video->caps & V4L2_CAP_VIDEO_M2M ? 2 : 1;
@@ -478,7 +480,7 @@ struct esp_video *esp_video_open(const char *name)
     }
 
 exit_0:
-    xSemaphoreGive(video->mutex);
+    xSemaphoreGive(opened_video->mutex);
     return video;
 }
 

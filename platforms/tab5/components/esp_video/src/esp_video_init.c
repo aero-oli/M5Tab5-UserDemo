@@ -11,6 +11,7 @@
 #include "esp_log.h"
 
 #include "esp_sccb_i2c.h"
+#include "esp_cam_sensor.h"
 #include "esp_cam_sensor_detect.h"
 
 #include "esp_video_init.h"
@@ -205,7 +206,7 @@ esp_err_t esp_video_init(const esp_video_init_config_t *config)
          p < &__esp_cam_sensor_detect_fn_array_end; ++p) {
 #if CONFIG_ESP_VIDEO_ENABLE_MIPI_CSI_VIDEO_DEVICE
         if (p->port == ESP_CAM_SENSOR_MIPI_CSI && config->csi != NULL) {
-            esp_cam_sensor_config_t cfg;
+            esp_cam_sensor_config_t cfg = {0};
             esp_cam_sensor_device_t *cam_dev;
 
             cfg.sccb_handle =
@@ -218,12 +219,15 @@ esp_err_t esp_video_init(const esp_video_init_config_t *config)
             cam_dev = (*(p->detect))((void *)&cfg);
             if (!cam_dev) {
                 ESP_LOGE(TAG, "failed to detect MIPI-CSI camera");
+                esp_sccb_del_i2c_io(cfg.sccb_handle);
                 return ESP_FAIL;
             }
 
             ret = esp_video_create_csi_video_device(cam_dev);
             if (ret != ESP_OK) {
                 ESP_LOGE(TAG, "failed to create MIPI-CSI video device");
+                esp_cam_sensor_del_dev(cam_dev);
+                esp_sccb_del_i2c_io(cfg.sccb_handle);
                 return ret;
             }
         }

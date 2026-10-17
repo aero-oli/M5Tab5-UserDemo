@@ -55,22 +55,3 @@ void HalEsp32::updateImuData()
     imuData.gyroY  = bmi_sensor_data.gyr.x / 32.768 / 10.0f;
     imuData.gyroZ  = -bmi_sensor_data.gyr.z / 32.768 / 10.0f;
 }
-
-void HalEsp32::sleepAndShakeWakeup()
-{
-    mclog::tagInfo(_tag, "start aleep and shake wakeup");
-
-    clearRtcIrq();
-    clearImuIrq();
-
-    delay(200);
-
-    mclog::tagInfo(_tag, "set motion irq");
-    accel_gyro_bmi270_motion_irq();
-
-    // delay(800);
-    powerOff();
-    while (1) {
-        delay(100);
-    }
-}
