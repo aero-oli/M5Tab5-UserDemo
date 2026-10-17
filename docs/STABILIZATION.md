@@ -32,7 +32,7 @@ Do not describe a desktop simulator pass as electrical, DMA, wake, radio or OTA 
 | 2 | Single UI lifecycle owner, synchronized network snapshots, nonblocking sensor sampling, worker shutdown and device instrumentation | Software gate passed: 56/56 desktop tests; Tab5 build |
 | 3 | Camera failed-stop safety, BMI270 wake rollback, audio ownership/cancellation, brightness recovery, visible PPS off failure | Software gate passed: 61/61 desktop tests; focused final rerun; Tab5 build |
 | 4 | Truthful RTC/SD/sensor results, restore RTC setting, fresh Home status | Software gate passed: 65/65 desktop tests; RTC fault journeys; Tab5 build |
-| 5 | Wi-Fi restoration/recovery; verified HTTPS OTA, progress, cancellation, confirmation and recovery | Pending |
+| 5 | Wi-Fi restoration/recovery; verified HTTPS OTA, progress, cancellation, confirmation and recovery | Software gate passed: 72/72 desktop tests; OTA fault/cancel journeys; Tab5 build |
 | 6 | Focused Home, exact PPS entry, populated logs/files/networks, keyboard/error/busy journeys | Pending |
 | 7 | Build/test CI, separate smoke harness, extension contracts, device acceptance and release procedure | Pending |
 
@@ -129,3 +129,35 @@ the [Epson RX8130CE manual](https://download.epsondevice.com/td/pdf/app/RX8130CE
 policy retains the board's original setting for the [Tab5 supercapacitor](https://docs.m5stack.com/en/core/Tab5).
 Desktop clock changes affect only the simulator. SD scans own a serialized temporary mount, always attempt
 cleanup after reads, distinguish empty results from failure, and cap results at 256 entries with a notice.
+
+## Milestone 5 network and update contract
+
+Verified 2026-10-17: desktop build and 72/72 CTest tests, rendered confirmation/progress/completion
+screens, OTA transport/flash fault and cancellation regressions (including ASan), boot-health
+ASan/UBSan tests, and the ESP-IDF v5.4.2 firmware build. No hardware was connected or flashed.
+
+Network commands have one admission lease; OTA reserves the connection until transport/flash cleanup finishes.
+Shutdown and real sleep/power preparation close admission and drain pending work. A failed power transition reopens
+admission; Screen Off leaves networking active. Wi-Fi restores bounded NVS credentials without erasing unrelated NVS,
+accepts 32-byte SSIDs, checks transition failures, and expires incomplete connection/DHCP attempts after 20 seconds.
+Scans keep a healthy connection and verify its current link/address afterward. Stale events must match current intent
+and the SDK's actual station/netif state before updating the cache.
+
+OTA uses the installed ESP-IDF 5.4.2 `esp_http_client` streaming API with its certificate bundle and default hostname
+verification, then `esp_ota_*` for the inactive partition. The high-level HTTPS OTA wrapper was unsuitable here because
+it follows redirects internally. Redirects/non-200 responses are rejected. Transfers have a 5-second network timeout,
+5-minute overall deadline, bounded 4 KiB buffer, partition/declared-length checks, chip/project header checks and SDK
+whole-image validation. An atomic commit boundary closes cancellation immediately before selecting the boot image.
+The app presents transferred bytes and explicit install/reboot confirmations; leaving the view does not cancel OTA.
+
+The rebuilt bootloader enables ordinary OTA rollback (no anti-rollback eFuse changes). Pending images require a
+minimum 3-second window of lifecycle/render progress and core display/input/registry availability, with a 10-second
+health-check deadline. An independent timer armed before application initialization resets an unconfirmed boot after
+15 seconds. Only a successful mark-valid operation and VALID readback disarm it. A timeout racing mark-valid may cause
+an extra reboot; the SDK's redundant OTA metadata determines the selected image. These checks do not test peripherals.
+
+**Deployment prerequisite:** the rollback-enabled bootloader and compatible partition table must be installed before
+claiming rollback support. Existing-device partition/bootloader identity is unknown, so no app-only OTA migration has
+been authorized or tested. Actual TLS interoperability, radio recovery, flash interruption and rollback remain device
+acceptance gates. The SDK source used for this implementation is the pinned local v5.4.2 checkout, particularly
+`esp_http_client`, `app_update/esp_ota_ops.c`, `bootloader_support`, and the system/timer startup code.

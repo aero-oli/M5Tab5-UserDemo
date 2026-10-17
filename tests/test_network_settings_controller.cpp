@@ -25,9 +25,11 @@ int main()
     bool extAntenna = false;
 
     hal::HalBase::WifiStatus status;
+    hal::HalBase::OtaStatus ota;
     status.state = hal::HalBase::WifiConnectionState::Idle;
 
     NetworkCallbacks callbacks;
+    callbacks.otaStatus = [&] { return ota; };
     callbacks.status = [&] {
         status.extAntennaEnabled = extAntenna;
         return status;
@@ -100,6 +102,9 @@ int main()
     assert(snapshot.status.state == hal::HalBase::WifiConnectionState::Connected);
 
     controller.setExtAntennaEnabled(true);
+    assert(!extAntenna); // The UI request must not run blocking hardware IO inline.
+    assert(controller.refresh().busy);
+    jobs.back().work();
     snapshot = controller.refresh();
     assert(snapshot.status.extAntennaEnabled);
 
@@ -120,6 +125,14 @@ int main()
     snapshot = controller.refresh();
     assert(disconnects == 1);
     assert(snapshot.detail == "Disconnected.");
+
+    ota.state = hal::HalBase::OtaState::Downloading;
+    const auto before = jobs.size();
+    assert(controller.refresh().updateActive);
+    assert(!controller.scan() && !controller.connect("Workshop", "secret"));
+    assert(!controller.disconnect() && !controller.startAccessPoint() && !controller.stopAccessPoint());
+    controller.setExtAntennaEnabled(false);
+    assert(jobs.size() == before && extAntenna);
 
     return 0;
 }

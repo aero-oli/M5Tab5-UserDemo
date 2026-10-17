@@ -82,6 +82,9 @@ public:
     void setExtAntennaEnable(bool enable) override;
     bool getExtAntennaEnable() override;
     void startWifiAp() override;
+    bool wifiRestoreSavedConnection() override;
+    bool stopNetworkAndWait(uint32_t timeoutMs) override;
+    void resumeNetwork() override;
     WifiStatus wifiGetStatus() override;
     std::vector<WifiNetwork> wifiScan() override;
     bool wifiConnect(const std::string& ssid, const std::string& password) override;

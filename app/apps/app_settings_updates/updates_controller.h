@@ -16,7 +16,12 @@ struct UpdatesSnapshot {
     hal::HalBase::WifiStatus wifi;
     hal::HalBase::OtaStatus ota;
     std::string detail;
+    std::string stateText;
+    std::string progressText;
     bool canInstall = false;
+    bool canCancel = false;
+    bool canReboot = false;
+    bool busy = false;
 };
 
 struct UpdatesCallbacks {
@@ -32,16 +37,16 @@ public:
     explicit UpdatesController(UpdatesCallbacks callbacks);
 
     UpdatesSnapshot refresh();
+    bool prepareInstall(const std::string& url);
     bool start(const std::string& url);
     void cancel();
     void rebootToApply();
 
 private:
     static bool isInstallBusy(hal::HalBase::OtaState state);
-    static bool isValidUrl(const std::string& url);
 
     UpdatesCallbacks _callbacks;
-    std::string _detail;
+    std::string _inputError;
 };
 
 }  // namespace app_settings_updates

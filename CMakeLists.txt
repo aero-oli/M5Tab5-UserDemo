@@ -457,3 +457,35 @@ target_include_directories(interface_data_tests PRIVATE app)
 target_include_directories(interface_data_tests SYSTEM PRIVATE dependencies/lvgl)
 target_compile_features(interface_data_tests PRIVATE cxx_std_17)
 add_test(NAME interface_data_tests COMMAND interface_data_tests)
+
+add_executable(boot_health_tests tests/test_boot_health.cpp)
+target_include_directories(boot_health_tests PRIVATE app)
+target_compile_features(boot_health_tests PRIVATE cxx_std_17)
+add_test(NAME boot_health_tests COMMAND boot_health_tests)
+
+add_executable(ota_transfer_tests tests/test_ota_transfer.cpp)
+target_include_directories(ota_transfer_tests PRIVATE app)
+target_include_directories(ota_transfer_tests SYSTEM PRIVATE dependencies/lvgl)
+target_compile_features(ota_transfer_tests PRIVATE cxx_std_17)
+target_link_libraries(ota_transfer_tests PRIVATE pthread)
+add_test(NAME ota_transfer_tests COMMAND ota_transfer_tests)
+
+add_executable(wifi_policy_tests tests/test_wifi_policy.cpp)
+target_include_directories(wifi_policy_tests PRIVATE app)
+target_include_directories(wifi_policy_tests SYSTEM PRIVATE dependencies/lvgl)
+target_compile_features(wifi_policy_tests PRIVATE cxx_std_17)
+target_link_libraries(wifi_policy_tests PRIVATE pthread)
+add_test(NAME wifi_policy_tests COMMAND wifi_policy_tests)
+
+foreach(fault RTC_INVALID OTA_FAIL OTA_UNKNOWN_LENGTH)
+    string(TOLOWER ${fault} fault_name)
+    add_test(NAME desktop_${fault_name}_ui_tests
+        COMMAND ${CMAKE_COMMAND} -E env SDL_VIDEODRIVER=dummy M5TAB5_DESKTOP_MAX_FRAMES=8
+        M5TAB5_DESKTOP_ASSERT_ALL_APPS_UI=1 M5TAB5_DESKTOP_${fault}=1 $<TARGET_FILE:app_desktop_build>)
+    set_tests_properties(desktop_${fault_name}_ui_tests PROPERTIES TIMEOUT 30)
+endforeach()
+add_test(NAME desktop_hardware_read_failure_ui_tests
+    COMMAND ${CMAKE_COMMAND} -E env SDL_VIDEODRIVER=dummy M5TAB5_DESKTOP_MAX_FRAMES=8
+    M5TAB5_DESKTOP_ASSERT_ALL_APPS_UI=1 M5TAB5_DESKTOP_RTC_FAIL=1 M5TAB5_DESKTOP_INTERFACE_FAIL=1
+    $<TARGET_FILE:app_desktop_build>)
+set_tests_properties(desktop_hardware_read_failure_ui_tests PROPERTIES TIMEOUT 30)

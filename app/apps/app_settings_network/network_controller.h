@@ -20,10 +20,12 @@ struct NetworkSnapshot {
     std::vector<hal::HalBase::WifiNetwork> networks;
     std::string detail = "Ready";
     bool busy = false;
+    bool updateActive = false;
 };
 
 struct NetworkCallbacks {
     std::function<hal::HalBase::WifiStatus()> status;
+    std::function<hal::HalBase::OtaStatus()> otaStatus;
     std::function<std::vector<hal::HalBase::WifiNetwork>()> scan;
     std::function<bool(const std::string&, const std::string&)> connect;
     std::function<void()> disconnect;
@@ -59,6 +61,7 @@ private:
     bool startCommand(const std::string& jobName, const std::string& pendingDetail, std::function<std::string()> work);
     void finishCompletedJob();
     static std::string scanDetail(size_t count);
+    bool updateActive() const;
 
     NetworkCallbacks _callbacks;
     NetworkSnapshot _snapshot;

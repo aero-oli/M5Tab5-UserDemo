@@ -246,7 +246,7 @@ private:
             _scanPending = false;
             _scanComplete = true;
         }
-        _busy = snapshot.busy || snapshot.status.state == hal::HalBase::WifiConnectionState::Connecting ||
+        _busy = snapshot.busy || snapshot.updateActive || snapshot.status.state == hal::HalBase::WifiConnectionState::Connecting ||
                 snapshot.status.state == hal::HalBase::WifiConnectionState::Scanning;
         refreshMetric(_primary, "Wi-Fi", "%s", wifi_state_name(snapshot.status.state));
         refreshMetric(_secondary, "Address", "%s", snapshot.status.ipAddress.empty() ? "--" : snapshot.status.ipAddress.c_str());
@@ -276,7 +276,7 @@ private:
                 disabled = disabled || apRunning;
             } else if (action->id == ActionId::DisconnectWifi) {
                 const auto state = snapshot.status.state;
-                disabled = snapshot.busy || (state != hal::HalBase::WifiConnectionState::Connected &&
+                disabled = snapshot.busy || snapshot.updateActive || (state != hal::HalBase::WifiConnectionState::Connected &&
                                              state != hal::HalBase::WifiConnectionState::Connecting);
             } else if (action->id == ActionId::StartAp) {
                 disabled = disabled || apRunning;
@@ -324,7 +324,9 @@ private:
             return;
         }
         std::string text = snapshot.detail;
-        if (snapshot.status.state == hal::HalBase::WifiConnectionState::Connecting) {
+        if (snapshot.updateActive) {
+            text = "Firmware update owns Wi-Fi. Cancel or finish it in Updates.";
+        } else if (snapshot.status.state == hal::HalBase::WifiConnectionState::Connecting) {
             text = "Connecting to " + snapshot.status.ssid + "...";
         } else if (!snapshot.status.lastError.empty()) {
             text = snapshot.status.lastError;
@@ -447,6 +449,7 @@ private:
         NetworkCallbacks callbacks;
         callbacks.status = [] { return GetHAL()->wifiGetStatus(); };
         callbacks.scan = [] { return GetHAL()->wifiScan(); };
+        callbacks.otaStatus = [] { return GetHAL()->otaGetStatus(); };
         callbacks.connect = [](const std::string& ssid, const std::string& password) {
             return GetHAL()->wifiConnect(ssid, password);
         };

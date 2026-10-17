@@ -71,6 +71,9 @@ public:
 
     void setExtAntennaEnable(bool enable) override;
     bool getExtAntennaEnable() override;
+    bool wifiRestoreSavedConnection() override;
+    bool stopNetworkAndWait(uint32_t timeoutMs) override;
+    void resumeNetwork() override;
     WifiStatus wifiGetStatus() override;
     std::vector<WifiNetwork> wifiScan() override;
     bool wifiConnect(const std::string& ssid, const std::string& password) override;
@@ -115,12 +118,6 @@ private:
     bool _charge_enable             = true;
     bool _ext_5v_enable             = true;
     bool _usba_5v_enable            = true;
-    bool _ext_antenna_enable        = false;
-    WifiStatus _wifi_status;
-    std::mutex _wifi_mutex;
-    std::vector<WifiNetwork> _wifi_networks;
-    OtaStatus _ota_status;
-    uint32_t _ota_started_ms = 0;
     std::mutex _cameraMutex;
     CameraStatus _cameraStatus{CameraState::Stopped};
     lv_obj_t* _cameraCanvas = nullptr;

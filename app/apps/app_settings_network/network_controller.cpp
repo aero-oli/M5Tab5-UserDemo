@@ -18,11 +18,13 @@ NetworkSnapshot NetworkController::refresh()
         _snapshot.status = _callbacks.status();
     }
     _snapshot.busy = _job != nullptr;
+    _snapshot.updateActive = updateActive();
     return _snapshot;
 }
 
 bool NetworkController::scan()
 {
+    if (updateActive()) { _snapshot.detail = "Firmware update owns Wi-Fi."; return false; }
     if (!_callbacks.scan) {
         _snapshot.detail = "Wi-Fi scan is unavailable.";
         return false;
@@ -103,10 +105,12 @@ bool NetworkController::forgetCredentials()
 
 void NetworkController::setExtAntennaEnabled(bool enabled)
 {
-    if (_callbacks.setExtAntenna) {
-        _callbacks.setExtAntenna(enabled);
-    }
-    _snapshot.status.extAntennaEnabled = enabled;
+    if (!_callbacks.setExtAntenna) return;
+    auto set = _callbacks.setExtAntenna;
+    startCommand("Wi-Fi antenna", "Changing antenna...", [set, enabled] {
+        set(enabled);
+        return std::string("Antenna request complete.");
+    });
 }
 
 bool NetworkController::startAccessPoint()
@@ -136,6 +140,7 @@ bool NetworkController::stopAccessPoint()
 
 bool NetworkController::startCommand(const std::string& jobName, const std::string& pendingDetail, std::function<std::string()> work)
 {
+    if (updateActive()) { _snapshot.detail = "Firmware update owns Wi-Fi."; return false; }
     if (!_callbacks.startJob) {
         _snapshot.detail = "Background jobs are unavailable.";
         return false;
@@ -206,4 +211,12 @@ std::string NetworkController::scanDetail(size_t count)
         return "Found 1 Wi-Fi network.";
     }
     return "Found " + std::to_string(count) + " Wi-Fi networks.";
+}
+
+bool NetworkController::updateActive() const
+{
+    if (!_callbacks.otaStatus) return false;
+    using State = hal::HalBase::OtaState;
+    const auto state = _callbacks.otaStatus().state;
+    return state == State::Checking || state == State::Downloading || state == State::Installing || state == State::Cancelling;
 }

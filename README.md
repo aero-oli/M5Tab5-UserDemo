@@ -92,6 +92,23 @@ The desktop UI smoke tests exercise network selection, connection, rescanning, d
 Set `M5TAB5_DESKTOP_WIFI_NO_NETWORKS=1` for empty scan results or `M5TAB5_DESKTOP_WIFI_CONNECT_FAIL=1` for connection
 failure. These simulator flags do not affect Tab5 builds.
 
+Wi-Fi restores validated saved credentials at startup, supports a full 32-byte SSID, and preserves an established
+connection while scanning. Failed transitions and connection/DHCP timeouts are visible. Network changes run outside
+the UI and are unavailable while an update owns the connection.
+
+Updates accepts HTTPS URLs only, verifies the server certificate/hostname using the bundled trust store, rejects
+redirects, and checks the image's chip, project, size and SDK image validation before selecting it for boot. A valid
+RTC/system time is needed for certificate checks. Install and reboot each require confirmation. Progress uses actual
+bytes; unknown-length transfers show no invented percentage. Cancel works until final boot selection; Back leaves
+the transfer running and reopening Updates restores its status. Desktop uses a simulated image and never flashes or
+reboots the host; `M5TAB5_DESKTOP_OTA_FAIL=1` and `M5TAB5_DESKTOP_OTA_UNKNOWN_LENGTH=1` exercise these cases.
+
+Rollback is enabled in the build. A pending image must demonstrate core UI/input setup and sustained lifecycle/render
+progress before it is marked valid. An independent 15-second startup watchdog covers initialization stalls. This is a
+startup check, not peripheral acceptance. **Rollback requires the matching rebuilt bootloader to be flashed.** Updating
+an app image alone cannot install that bootloader or migrate a partition table. Follow the
+[device release gate](docs/STABILIZATION.md) before deploying to existing hardware.
+
 Camera capture reports Starting/Running/Stopping/Failed states from the HAL rather than assuming startup succeeded.
 `stopCameraCapture()` detaches the LVGL target before returning; app views can then be destroyed while hardware
 cleanup finishes. A new capture cannot start until that cleanup completes. Tab5 previews use separate render/display

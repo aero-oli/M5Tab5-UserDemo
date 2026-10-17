@@ -418,17 +418,25 @@ public:
         Checking,
         Downloading,
         Installing,
+        Cancelling,
+        Cancelled,
         Complete,
         Failed,
     };
     struct OtaStatus {
         OtaState state = OtaState::Idle;
         int progress = 0;
+        bool progressKnown = false;
+        bool canCancel = false;
+        bool simulated = false;
         size_t bytesReceived = 0;
         size_t totalBytes = 0;
         std::string lastError;
         bool rebootRequired = false;
     };
+    virtual bool wifiRestoreSavedConnection() { return false; }
+    virtual bool stopNetworkAndWait(uint32_t timeoutMs) { return true; }
+    virtual void resumeNetwork() {}
     virtual WifiStatus wifiGetStatus()
     {
         return {};

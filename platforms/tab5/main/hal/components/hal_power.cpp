@@ -144,13 +144,20 @@ hal::PowerResult HalEsp32::performPowerAction(hal::PowerAction action, uint16_t 
     if (action == hal::PowerAction::SleepRtc && (rtcMinutes < 1 || rtcMinutes > 60))
         return {false, false, false, "Wake interval must be 1-60 minutes"};
 
+    // Screen Off returned above: apps and networking remain active in that mode.
+    // Physical shutdown must wait for OTA boot-commit/cleanup before power loss.
+    if (!stopNetworkAndWait(5000)) {
+        resumeNetwork();
+        return {false, false, false, "Network/OTA did not stop; shutdown cancelled"};
+    }
     std::lock_guard<std::mutex> rtcLock(_rtcIoMutex);
     modules::HalI2cDevice rtcDevice(hal::ModuleBus::MBus, 0x32);
     rtc::Rx8130WakeTimer timer(rtcDevice);
     auto failed = [&](const std::string& message) {
         auto result = hal::recoverPowerFailure(hal::PowerResult{false, false, false, message},
             [&] { return timer.cancel(); }, [&] { return accel_gyro_bmi270_restore_normal(); });
-        resumeAudio(); // Reopen tone/playback admission only after preparation has unwound.
+        resumeAudio(); // Reopen admission only after preparation has unwound.
+        resumeNetwork();
         return result;
     };
     if (!timer.cancel()) return failed(timer.error());

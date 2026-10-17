@@ -687,6 +687,93 @@ static void desktopAssertRtcWorkflow()
     desktopSaveUiCapture("RTC-set-verified");
 }
 
+static void desktopAssertUpdatesWorkflow(int appId)
+{
+    using State = hal::HalBase::OtaState;
+    auto check = [](bool ok, const char* reason) {
+        if (!ok) { mclog::tagError(_tag, "desktop Updates workflow: {}", reason); std::abort(); }
+    };
+    auto waitFor = [&](State expected, const char* enabledButton) {
+        const auto started = GetHAL()->millis();
+        while (GetHAL()->millis() - started < 5000) {
+            desktopPumpLifecycle();
+            LvglLockGuard lock;
+            auto* button = desktopFindButton(desktopTopFullscreenRoot(), enabledButton);
+            if (GetHAL()->otaGetStatus().state == expected && button &&
+                !lv_obj_has_state(button, LV_STATE_DISABLED)) return;
+            SDL_Delay(5);
+        }
+        check(false, "state/control did not settle");
+    };
+    if (!GetHAL()->wifiConnect("Workshop", "simulated-password")) {
+        desktopPumpLifecycle();
+        check(lv_obj_has_state(desktopFindButton(desktopTopFullscreenRoot(), "Install Update"), LV_STATE_DISABLED),
+              "Install enabled without Wi-Fi");
+        return;
+    }
+    waitFor(State::Idle, "Install Update");
+    {
+        LvglLockGuard lock;
+        auto* root = desktopTopFullscreenRoot();
+        std::vector<lv_obj_t*> fields;
+        desktopCollectTextFields(root, fields);
+        check(fields.size() == 1, "expected URL input");
+        lv_textarea_set_text(fields[0], "http://example.com/firmware.bin");
+        desktopClickNetworkAction("Install Update");
+        check(desktopHasLabelContaining(root, "HTTPS") && !desktopFindButton(root, "Confirm"), "HTTP URL accepted");
+        lv_textarea_set_text(fields[0], "https://example.com/m5stack_tab5.bin");
+        desktopClickNetworkAction("Install Update");
+        lv_obj_update_layout(root);
+        check(desktopHasLabel(root, "Install firmware update?"), "missing install confirmation");
+        check(GetHAL()->otaGetStatus().state == State::Idle, "download started before confirmation");
+        desktopSaveUiCapture("Updates-confirmation");
+        desktopClickNetworkAction("Cancel");
+        check(GetHAL()->otaGetStatus().state == State::Idle, "cancelled dialog started a transfer");
+        desktopClickNetworkAction("Install Update");
+        desktopClickNetworkAction("Confirm");
+        check(lv_obj_has_state(fields[0], LV_STATE_DISABLED), "URL remained editable during update");
+    }
+    // A screen may be destroyed while the registered transfer retains ownership.
+    desktopClickNetworkAction("Back");
+    desktopPumpLifecycle();
+    check(GetMooncake().getAppCurrentState(appId) == AppAbility::StateSleeping, "Back did not close Updates");
+    check(app_registry::registry().open(app_registry::AppKey::Updates), "cannot reopen Updates");
+    desktopPumpLifecycle();
+    {
+        LvglLockGuard lock;
+        desktopClickNetworkAction("Cancel Update");
+    }
+    waitFor(State::Cancelled, "Install Update");
+    check(!GetHAL()->otaGetStatus().rebootRequired, "cancelled update selected boot image");
+    desktopSaveUiCapture("Updates-cancelled");
+    {
+        LvglLockGuard lock;
+        std::vector<lv_obj_t*> fields;
+        desktopCollectTextFields(desktopTopFullscreenRoot(), fields);
+        check(fields.size() == 1, "URL field missing after reopen");
+        lv_textarea_set_text(fields[0], "https://example.com/m5stack_tab5.bin");
+        desktopClickNetworkAction("Install Update");
+        desktopClickNetworkAction("Confirm");
+    }
+    if (desktopEnvEnabled("M5TAB5_DESKTOP_OTA_FAIL")) {
+        waitFor(State::Failed, "Install Update");
+        check(!GetHAL()->otaGetStatus().rebootRequired, "failed update requires reboot");
+        desktopSaveUiCapture("Updates-failed");
+    } else {
+        waitFor(State::Complete, "Reboot");
+        check(GetHAL()->otaGetStatus().simulated, "desktop update was not identified as simulation");
+        desktopSaveUiCapture("Updates-complete");
+        desktopClickNetworkAction("Reboot");
+        desktopClickNetworkAction("Cancel");
+        check(GetHAL()->otaGetStatus().rebootRequired, "reboot ran before confirmation");
+        desktopClickNetworkAction("Reboot");
+        desktopClickNetworkAction("Confirm");
+        waitFor(State::Idle, "Install Update");
+    }
+    check(desktopValidateNonScrollableBounds("Updates workflow"), "off-screen update controls");
+    GetHAL()->wifiDisconnect();
+}
+
 static size_t desktopTimerCount()
 {
     size_t count = 0;
@@ -1254,6 +1341,9 @@ static void desktopAssertAllRegisteredAppsUi()
         if (registeredApp.key == app_registry::AppKey::Rtc) {
             desktopAssertRtcWorkflow();
         }
+        if (registeredApp.key == app_registry::AppKey::Updates) {
+            desktopAssertUpdatesWorkflow(registeredApp.appId);
+        }
         if (registeredApp.key == app_registry::AppKey::Pps) {
             desktopAssertPpsWorkflow();
         }
@@ -1429,6 +1519,8 @@ void app::Init(InitCallback_t callback)
     }
 
     app_runtime::AsyncJobRunner::resumeAll();
+    GetHAL()->resumeNetwork();
+    GetHAL()->wifiRestoreSavedConnection();
     // Installation and timer registration are atomic with respect to the display task.
     // Thereafter all normal lifecycle transitions execute from this LVGL timer.
     LvglLockGuard lock;
@@ -1491,6 +1583,10 @@ void app::Destroy()
     }
     app_pps::PpsController::shutdown();
     app_settings_power::PowerSettingsController::shutdown();
+    if (!GetHAL()->stopNetworkAndWait(15000)) {
+        mclog::tagError(_tag, "Network shutdown timed out: refusing to destroy active update resources");
+        std::abort();
+    }
     if (!app_runtime::AsyncJobRunner::shutdownAll(30000)) {
         mclog::tagError(_tag, "Shutdown timed out: refusing to destroy HAL while jobs still use it");
         std::abort();
